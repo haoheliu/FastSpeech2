@@ -75,11 +75,12 @@ def log(
         logger.add_scalar("Loss/pitch_loss", losses[3], step)
         logger.add_scalar("Loss/energy_loss", losses[4], step)
         logger.add_scalar("Loss/duration_loss", losses[5], step)
-        logger.add_scalar("Loss/disc_loss", losses[6], step)
-        logger.add_scalar("Loss/fmap_loss", losses[7], step)
-        logger.add_scalar("Loss/r_loss", losses[8], step)
-        logger.add_scalar("Loss/g_loss", losses[8], step)
-        logger.add_scalar("Loss/gen_loss", losses[9], step)
+        if(len(losses) > 6):
+            logger.add_scalar("Loss/disc_loss", losses[6], step)
+            logger.add_scalar("Loss/fmap_loss", losses[7], step)
+            logger.add_scalar("Loss/r_loss", losses[8], step)
+            logger.add_scalar("Loss/g_loss", losses[8], step)
+            logger.add_scalar("Loss/gen_loss", losses[9], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)

@@ -22,7 +22,7 @@ class FastSpeech2Loss(nn.Module):
         gen_losses = []
         for dg in disc_outputs:
             dg = dg.float()
-            l = torch.mean((1-dg)**2)
+            l = torch.mean(self.hhl_loss((1-dg)**2))
             gen_losses.append(l)
             loss += l
         return loss, gen_losses
@@ -36,6 +36,9 @@ class FastSpeech2Loss(nn.Module):
                 loss += torch.mean(torch.abs(rl - gl))
         return loss * 2 
 
+    def hhl_loss(self, x):
+        return (-(1/(x-1+1e-8)))-1
+
     def discriminator_loss(self, disc_real_outputs, disc_generated_outputs):
         loss = 0
         r_losses = []
@@ -43,8 +46,8 @@ class FastSpeech2Loss(nn.Module):
         for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
             dr = dr.float()
             dg = dg.float()
-            r_loss = torch.mean((1-dr)**2)
-            g_loss = torch.mean(dg**2)
+            r_loss = torch.mean(self.hhl_loss((1-dr)**2))
+            g_loss = torch.mean(self.hhl_loss(dg**2))
             loss += (r_loss + g_loss)
             r_losses.append(r_loss.item())
             g_losses.append(g_loss.item())
@@ -123,4 +126,4 @@ class FastSpeech2Loss(nn.Module):
             pitch_loss,
             energy_loss,
             duration_loss,
-        ), (mel_predictions, mel_targets)
+        ), (postnet_mel_predictions, mel_targets)

@@ -84,31 +84,34 @@ def main(args, configs):
 
                 # Cal Loss
                 losses, (mel_predictions, mel_targets) = Loss(batch, output)
-                # if(step >1000):
-                disc_real_outputs, _ = disc(mel_targets)
-                disc_generated_outputs, _ = disc(mel_predictions.detach())
-                disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
-                r_losses = torch.sum(torch.tensor(r_losses))
-                g_losses = torch.sum(torch.tensor(g_losses))
-                d_loss = disc_loss / grad_acc_step
-                d_loss.backward()
                 
-                if step % grad_acc_step == 0:
-                    nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)
-                    opt_d.step_and_update_lr()
-                    opt_d.zero_grad()
-                # else:
-                #     disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
-                #     r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
-
-                # Backward
-                disc_real_outputs, fmap_real = disc(mel_targets)
-                disc_generated_outputs, fmap_generated = disc(mel_predictions)
+                disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
+                r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
+                gen_loss = torch.tensor([0.0])
                 
-                fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
-                gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
-                # import ipdb; ipdb.set_trace()
-                total_loss = losses[0] + fmap_loss + gen_loss
+                if(step >2000):
+                    disc_real_outputs, _ = disc(mel_targets)
+                    disc_generated_outputs, _ = disc(mel_predictions.detach())
+                    disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
+                    r_losses = torch.sum(torch.tensor(r_losses))
+                    g_losses = torch.sum(torch.tensor(g_losses))
+                    d_loss = 100 * disc_loss / grad_acc_step
+                    d_loss.backward()
+                    if step % grad_acc_step == 0:
+                        nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)
+                        opt_d.step_and_update_lr()
+                        opt_d.zero_grad()
+                
+                if(step > 10000):
+                    # Backward
+                    disc_real_outputs, fmap_real = disc(mel_targets)
+                    disc_generated_outputs, fmap_generated = disc(mel_predictions)
+                    fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
+                    gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
+                    total_loss = losses[0] + fmap_loss + gen_loss
+                else:
+                    total_loss = losses[0]
+                    
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
