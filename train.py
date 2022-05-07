@@ -140,14 +140,14 @@ def main(args, configs):
                         tag="Training/step_{}_{}_synthesized".format(step, tag),
                     )
 
-                # if step % val_step == 0:
-                #     model.eval()
-                #     message = evaluate(model, step, configs, val_logger, vocoder)
-                #     with open(os.path.join(val_log_path, "log.txt"), "a") as f:
-                #         f.write(message + "\n")
-                #     outer_bar.write(message)
+                if step % val_step == 0:
+                    model.eval()
+                    message = evaluate(model, step, configs, val_logger, vocoder)
+                    with open(os.path.join(val_log_path, "log.txt"), "a") as f:
+                        f.write(message + "\n")
+                    outer_bar.write(message)
 
-                #     model.train()
+                    model.train()
 
                 if step % save_step == 0:
                     torch.save(
