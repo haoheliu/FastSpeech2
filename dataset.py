@@ -40,7 +40,7 @@ class Dataset(Dataset):
         speaker_id = self.speaker_map[speaker]
         # raw_text = self.raw_text[idx]
         # phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
-        phone = np.load(self.text[idx]).T
+        phone = (np.load(self.text[idx]).T - 3.3425786) / 6.9992614
         
         mel_path = os.path.join(
             self.preprocessed_path,

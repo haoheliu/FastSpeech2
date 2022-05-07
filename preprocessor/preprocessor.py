@@ -1,7 +1,6 @@
 import os
 import random
 import json
-
 import tgt
 import librosa
 import numpy as np
@@ -146,12 +145,12 @@ class Preprocessor:
         with open(os.path.join(self.out_dir, "val.txt"), "w", encoding="utf-8") as f:
             for m in out[: self.val_size]:
                 f.write(m + "\n")
-
         # return out
 
     def process_utterance(self, speaker, basename):
         wav_path = os.path.join(self.in_dir, speaker, "{}.wav".format(basename))
         emb_path = os.path.join(self.in_dir, speaker, "{}.npy".format(basename))
+
         # text_path = os.path.join(self.in_dir, speaker, "{}.lab".format(basename))
         # tg_path = os.path.join(
         #     self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)

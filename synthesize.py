@@ -28,7 +28,6 @@ def read_lexicon(lex_path):
                 lexicon[word.lower()] = phones
     return lexicon
 
-
 def preprocess_english(text, preprocess_config):
     text = text.rstrip(punctuation)
     lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
