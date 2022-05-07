@@ -8,11 +8,10 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from utils.model import get_model, get_vocoder, get_param_num
+from utils.model import get_model, get_vocoder, get_param_num, get_discriminator
 from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
-
 from evaluate import evaluate
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,10 +35,11 @@ def main(args, configs):
         shuffle=True,
         collate_fn=dataset.collate_fn,
     )
-
+    
+    disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
     model, optimizer = get_model(args, configs, device, train=True)
-    model = nn.DataParallel(model)
+    
     num_param = get_param_num(model)
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
     print("Number of FastSpeech2 Parameters:", num_param)
@@ -83,24 +83,51 @@ def main(args, configs):
                 output = model(*(batch[2:]))
 
                 # Cal Loss
-                losses = Loss(batch, output)
-                total_loss = losses[0]
+                losses, (mel_predictions, mel_targets) = Loss(batch, output)
+                # if(step >1000):
+                disc_real_outputs, _ = disc(mel_targets)
+                disc_generated_outputs, _ = disc(mel_predictions.detach())
+                disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
+                r_losses = torch.sum(torch.tensor(r_losses))
+                g_losses = torch.sum(torch.tensor(g_losses))
+                d_loss = disc_loss / grad_acc_step
+                d_loss.backward()
+                
+                if step % grad_acc_step == 0:
+                    nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)
+                    opt_d.step_and_update_lr()
+                    opt_d.zero_grad()
+                # else:
+                #     disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
+                #     r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
 
                 # Backward
+                disc_real_outputs, fmap_real = disc(mel_targets)
+                disc_generated_outputs, fmap_generated = disc(mel_predictions)
+                
+                fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
+                gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
+                # import ipdb; ipdb.set_trace()
+                total_loss = losses[0] + fmap_loss + gen_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
+                
                 if step % grad_acc_step == 0:
                     # Clipping gradients to avoid gradient explosion
                     nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-
                     # Update weights
                     optimizer.step_and_update_lr()
                     optimizer.zero_grad()
 
+                losses = list(losses)
+                
+                losses.extend([disc_loss, fmap_loss])
+                losses.extend([r_losses, g_losses, gen_loss])
+                
                 if step % log_step == 0:
                     losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
+                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, ".format(
                         *losses
                     )
 

@@ -1,6 +1,6 @@
 path:
   ckpt_path: "./output/ckpt/esc50"
-  log_path: "./output/log/esc50"
+  log_path: "./output/log/esc50_disc"
   result_path: "./output/result/esc50"
 optimizer:
   batch_size: 16

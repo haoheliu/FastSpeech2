@@ -16,6 +16,40 @@ class FastSpeech2Loss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.mae_loss = nn.L1Loss()
 
+
+    def generator_loss(self, disc_outputs):
+        loss = 0
+        gen_losses = []
+        for dg in disc_outputs:
+            dg = dg.float()
+            l = torch.mean((1-dg)**2)
+            gen_losses.append(l)
+            loss += l
+        return loss, gen_losses
+    
+    def feature_loss(self, fmap_r, fmap_g):
+        loss = 0
+        for dr, dg in zip(fmap_r, fmap_g):
+            for rl, gl in zip(dr, dg):
+                rl = rl.float().detach()
+                gl = gl.float()
+                loss += torch.mean(torch.abs(rl - gl))
+        return loss * 2 
+
+    def discriminator_loss(self, disc_real_outputs, disc_generated_outputs):
+        loss = 0
+        r_losses = []
+        g_losses = []
+        for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
+            dr = dr.float()
+            dg = dg.float()
+            r_loss = torch.mean((1-dr)**2)
+            g_loss = torch.mean(dg**2)
+            loss += (r_loss + g_loss)
+            r_losses.append(r_loss.item())
+            g_losses.append(g_loss.item())
+        return loss, r_losses, g_losses
+
     def forward(self, inputs, predictions):
         (
             mel_targets,
@@ -65,14 +99,14 @@ class FastSpeech2Loss(nn.Module):
         log_duration_predictions = log_duration_predictions.masked_select(src_masks)
         log_duration_targets = log_duration_targets.masked_select(src_masks)
 
-        mel_predictions = mel_predictions.masked_select(mel_masks.unsqueeze(-1))
-        postnet_mel_predictions = postnet_mel_predictions.masked_select(
-            mel_masks.unsqueeze(-1)
-        )
-        mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
-
-        mel_loss = self.mae_loss(mel_predictions, mel_targets)
-        postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets)
+        # mel_predictions = mel_predictions.masked_select(mel_masks.unsqueeze(-1))
+        # postnet_mel_predictions = postnet_mel_predictions.masked_select(
+        #     mel_masks.unsqueeze(-1)
+        # )
+        # mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
+        
+        mel_loss = self.mae_loss(mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
+        postnet_mel_loss = self.mae_loss(postnet_mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
 
         pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
         energy_loss = self.mse_loss(energy_predictions, energy_targets)
@@ -89,4 +123,4 @@ class FastSpeech2Loss(nn.Module):
             pitch_loss,
             energy_loss,
             duration_loss,
-        )
+        ), (mel_predictions, mel_targets)
