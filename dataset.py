@@ -18,9 +18,14 @@ class Dataset(Dataset):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
         self.batch_size = train_config["optimizer"]["batch_size"]
 
-        self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
+        # self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
+            # filename
+        # )
+        
+        self.basename, self.speaker, self.text = self.process_meta(
             filename
         )
+        
         with open(os.path.join(self.preprocessed_path, "speakers.json")) as f:
             self.speaker_map = json.load(f)
         self.sort = sort
@@ -33,8 +38,10 @@ class Dataset(Dataset):
         basename = self.basename[idx]
         speaker = self.speaker[idx]
         speaker_id = self.speaker_map[speaker]
-        raw_text = self.raw_text[idx]
-        phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
+        # raw_text = self.raw_text[idx]
+        # phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
+        phone = np.load(self.text[idx]).T
+        
         mel_path = os.path.join(
             self.preprocessed_path,
             "mel",
@@ -59,12 +66,11 @@ class Dataset(Dataset):
             "{}-duration-{}.npy".format(speaker, basename),
         )
         duration = np.load(duration_path)
-
         sample = {
             "id": basename,
             "speaker": speaker_id,
             "text": phone,
-            "raw_text": raw_text,
+            # "raw_text": raw_text,
             "mel": mel,
             "pitch": pitch,
             "energy": energy,
@@ -82,28 +88,29 @@ class Dataset(Dataset):
             text = []
             raw_text = []
             for line in f.readlines():
-                n, s, t, r = line.strip("\n").split("|")
+                # n, s, t, r = line.strip("\n").split("|")
+                n, s, t = line.strip("\n").split("|")
                 name.append(n)
                 speaker.append(s)
                 text.append(t)
-                raw_text.append(r)
-            return name, speaker, text, raw_text
+                # raw_text.append(r)
+            return name, speaker, text # , raw_text
 
     def reprocess(self, data, idxs):
         ids = [data[idx]["id"] for idx in idxs]
         speakers = [data[idx]["speaker"] for idx in idxs]
         texts = [data[idx]["text"] for idx in idxs]
-        raw_texts = [data[idx]["raw_text"] for idx in idxs]
+        # raw_texts = [data[idx]["raw_text"] for idx in idxs]
         mels = [data[idx]["mel"] for idx in idxs]
         pitches = [data[idx]["pitch"] for idx in idxs]
         energies = [data[idx]["energy"] for idx in idxs]
         durations = [data[idx]["duration"] for idx in idxs]
-
+        
         text_lens = np.array([text.shape[0] for text in texts])
         mel_lens = np.array([mel.shape[0] for mel in mels])
 
         speakers = np.array(speakers)
-        texts = pad_1D(texts)
+        texts = pad_2D(texts)
         mels = pad_2D(mels)
         pitches = pad_1D(pitches)
         energies = pad_1D(energies)
@@ -111,7 +118,7 @@ class Dataset(Dataset):
 
         return (
             ids,
-            raw_texts,
+            None, # raw_texts,
             speakers,
             texts,
             text_lens,
@@ -146,56 +153,61 @@ class Dataset(Dataset):
         return output
 
 
-class TextDataset(Dataset):
-    def __init__(self, filepath, preprocess_config):
-        self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
+# class TextDataset(Dataset):
+#     def __init__(self, filepath, preprocess_config):
+#         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
 
-        self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
-            filepath
-        )
-        with open(
-            os.path.join(
-                preprocess_config["path"]["preprocessed_path"], "speakers.json"
-            )
-        ) as f:
-            self.speaker_map = json.load(f)
+#         # self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
+#             # filepath
+#         # )
+        
+#         self.basename, self.speaker, self.text = self.process_meta(
+#             filepath
+#         )
+        
+#         with open(
+#             os.path.join(
+#                 preprocess_config["path"]["preprocessed_path"], "speakers.json"
+#             )
+#         ) as f:
+#             self.speaker_map = json.load(f)
 
-    def __len__(self):
-        return len(self.text)
+#     def __len__(self):
+#         return len(self.text)
 
-    def __getitem__(self, idx):
-        basename = self.basename[idx]
-        speaker = self.speaker[idx]
-        speaker_id = self.speaker_map[speaker]
-        raw_text = self.raw_text[idx]
-        phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
+#     def __getitem__(self, idx):
+#         basename = self.basename[idx]
+#         speaker = self.speaker[idx]
+#         speaker_id = self.speaker_map[speaker]
+#         # raw_text = self.raw_text[idx]
+#         phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
 
-        return (basename, speaker_id, phone, raw_text)
+#         return (basename, speaker_id, phone)
 
-    def process_meta(self, filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            name = []
-            speaker = []
-            text = []
-            raw_text = []
-            for line in f.readlines():
-                n, s, t, r = line.strip("\n").split("|")
-                name.append(n)
-                speaker.append(s)
-                text.append(t)
-                raw_text.append(r)
-            return name, speaker, text, raw_text
+#     def process_meta(self, filename):
+#         with open(filename, "r", encoding="utf-8") as f:
+#             name = []
+#             speaker = []
+#             text = []
+#             raw_text = []
+#             for line in f.readlines():
+#                 n, s, t, r = line.strip("\n").split("|")
+#                 name.append(n)
+#                 speaker.append(s)
+#                 text.append(t)
+#                 raw_text.append(r)
+#             return name, speaker, text, raw_text
 
-    def collate_fn(self, data):
-        ids = [d[0] for d in data]
-        speakers = np.array([d[1] for d in data])
-        texts = [d[2] for d in data]
-        raw_texts = [d[3] for d in data]
-        text_lens = np.array([text.shape[0] for text in texts])
+#     def collate_fn(self, data):
+#         ids = [d[0] for d in data]
+#         speakers = np.array([d[1] for d in data])
+#         texts = [d[2] for d in data]
+#         raw_texts = [d[3] for d in data]
+#         text_lens = np.array([text.shape[0] for text in texts])
 
-        texts = pad_1D(texts)
+#         texts = pad_1D(texts)
 
-        return ids, raw_texts, speakers, texts, text_lens, max(text_lens)
+#         return ids, raw_texts, speakers, texts, text_lens, max(text_lens)
 
 
 if __name__ == "__main__":
@@ -203,14 +215,14 @@ if __name__ == "__main__":
     import torch
     import yaml
     from torch.utils.data import DataLoader
-    from utils.utils import to_device
+    from utils.tools import to_device
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     preprocess_config = yaml.load(
-        open("./config/LJSpeech/preprocess.yaml", "r"), Loader=yaml.FullLoader
+        open("./config/esc50/preprocess.yaml", "r"), Loader=yaml.FullLoader
     )
     train_config = yaml.load(
-        open("./config/LJSpeech/train.yaml", "r"), Loader=yaml.FullLoader
+        open("./config/esc50/train.yaml", "r"), Loader=yaml.FullLoader
     )
 
     train_dataset = Dataset(

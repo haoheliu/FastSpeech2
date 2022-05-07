@@ -71,16 +71,13 @@ class Preprocessor:
                     continue
 
                 basename = wav_name.split(".")[0]
-                tg_path = os.path.join(
-                    self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
-                )
-                if os.path.exists(tg_path):
-                    ret = self.process_utterance(speaker, basename)
-                    if ret is None:
-                        continue
-                    else:
-                        info, pitch, energy, n = ret
-                    out.append(info)
+                
+                ret = self.process_utterance(speaker, basename)
+                if ret is None:
+                    continue
+                else:
+                    info, pitch, energy, n = ret
+                out.append(info)
 
                 if len(pitch) > 0:
                     pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
@@ -150,33 +147,37 @@ class Preprocessor:
             for m in out[: self.val_size]:
                 f.write(m + "\n")
 
-        return out
+        # return out
 
     def process_utterance(self, speaker, basename):
         wav_path = os.path.join(self.in_dir, speaker, "{}.wav".format(basename))
-        text_path = os.path.join(self.in_dir, speaker, "{}.lab".format(basename))
-        tg_path = os.path.join(
-            self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
-        )
+        emb_path = os.path.join(self.in_dir, speaker, "{}.npy".format(basename))
+        # text_path = os.path.join(self.in_dir, speaker, "{}.lab".format(basename))
+        # tg_path = os.path.join(
+        #     self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
+        # )
 
-        # Get alignments
-        textgrid = tgt.io.read_textgrid(tg_path)
-        phone, duration, start, end = self.get_alignment(
-            textgrid.get_tier_by_name("phones")
-        )
-        text = "{" + " ".join(phone) + "}"
-        if start >= end:
-            return None
+        # # Get alignments
+        # textgrid = tgt.io.read_textgrid(tg_path)
+        # phone, duration, start, end = self.get_alignment(
+        #     textgrid.get_tier_by_name("phones")
+        # ) # list, list, float, float
+    
+        # text = "{" + " ".join(phone) + "}"
+        # if start >= end:
+        #     return None
 
         # Read and trim wav files
-        wav, _ = librosa.load(wav_path)
+        wav, sr = librosa.load(wav_path)
+        
+        start = 0
+        duration = librosa.get_duration(wav, sr=sr)
+        duration = np.array([8] * int(duration*100 / 8))
+        end = np.sum(duration) * 0.01
+        
         wav = wav[
             int(self.sampling_rate * start) : int(self.sampling_rate * end)
         ].astype(np.float32)
-
-        # Read raw text
-        with open(text_path, "r") as f:
-            raw_text = f.readline().strip("\n")
 
         # Compute fundamental frequency
         pitch, t = pw.dio(
@@ -244,7 +245,7 @@ class Preprocessor:
         )
 
         return (
-            "|".join([basename, speaker, text, raw_text]),
+            "|".join([basename, speaker, emb_path]),
             self.remove_outlier(pitch),
             self.remove_outlier(energy),
             mel_spectrogram.shape[1],

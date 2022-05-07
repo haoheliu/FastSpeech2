@@ -44,8 +44,8 @@ def main(args, configs):
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
     print("Number of FastSpeech2 Parameters:", num_param)
 
-    # Load vocoder
-    vocoder = get_vocoder(model_config, device)
+    # Load vocoder 
+    vocoder = None # get_vocoder(model_config, device)
 
     # Init logger
     for p in train_config["path"].values():
@@ -74,6 +74,7 @@ def main(args, configs):
 
     while True:
         inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
+        # import ipdb; ipdb.set_trace()
         for batchs in loader:
             for batch in batchs:
                 batch = to_device(batch, device)
@@ -139,14 +140,14 @@ def main(args, configs):
                         tag="Training/step_{}_{}_synthesized".format(step, tag),
                     )
 
-                if step % val_step == 0:
-                    model.eval()
-                    message = evaluate(model, step, configs, val_logger, vocoder)
-                    with open(os.path.join(val_log_path, "log.txt"), "a") as f:
-                        f.write(message + "\n")
-                    outer_bar.write(message)
+                # if step % val_step == 0:
+                #     model.eval()
+                #     message = evaluate(model, step, configs, val_logger, vocoder)
+                #     with open(os.path.join(val_log_path, "log.txt"), "a") as f:
+                #         f.write(message + "\n")
+                #     outer_bar.write(message)
 
-                    model.train()
+                #     model.train()
 
                 if step % save_step == 0:
                     torch.save(

@@ -14,7 +14,6 @@ matplotlib.use("Agg")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 def to_device(data, device):
     if len(data) == 12:
         (
@@ -127,7 +126,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
 
     with open(
         os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
-    ) as f:
+    ) as f: 
         stats = json.load(f)
         stats = stats["pitch"] + stats["energy"][:2]
 

@@ -1,25 +1,25 @@
-dataset: "LJSpeech"
+dataset: "esc50"
 
 path:
-  corpus_path: "/home/ming/Data/LJSpeech-1.1"
+  corpus_path: "/vol/research/dcase2022/datasets/esc50/ESC-50-master/audio"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
-  raw_path: "./raw_data/LJSpeech"
-  preprocessed_path: "./preprocessed_data/LJSpeech"
+  raw_path: "./raw_data/esc50"
+  preprocessed_path: "./preprocessed_data/esc50"
 
 preprocessing:
-  val_size: 512
+  val_size: 32
   text:
     text_cleaners: ["english_cleaners"]
     language: "en"
   audio:
-    sampling_rate: 22050
+    sampling_rate: 16000
     max_wav_value: 32768.0
   stft:
     filter_length: 1024
-    hop_length: 256
+    hop_length: 160
     win_length: 1024
   mel:
-    n_mel_channels: 80
+    n_mel_channels: 64
     mel_fmin: 0
     mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
   pitch:

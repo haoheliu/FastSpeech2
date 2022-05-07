@@ -24,7 +24,7 @@ class FastSpeech2(nn.Module):
             model_config["transformer"]["decoder_hidden"],
             preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
         )
-        self.postnet = PostNet()
+        self.postnet = PostNet(n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
 
         self.speaker_emb = None
         if model_config["multi_speaker"]:
@@ -42,13 +42,13 @@ class FastSpeech2(nn.Module):
 
     def forward(
         self,
-        speakers,
-        texts,
-        src_lens,
-        max_src_len,
-        mels=None,
-        mel_lens=None,
-        max_mel_len=None,
+        speakers, # (16,) The speaker id for each one in a batch, 
+        texts, # (16,117), (batch_size, max_src_len) 
+        src_lens, # (16,) The length of each one
+        max_src_len, # 117, int
+        mels=None, # (16, 845, 80)
+        mel_lens=None, # (16,)
+        max_mel_len=None, # 845, int
         p_targets=None,
         e_targets=None,
         d_targets=None,

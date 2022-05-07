@@ -56,9 +56,10 @@ class Encoder(nn.Module):
         self.src_word_emb = nn.Embedding(
             n_src_vocab, d_word_vec, padding_idx=Constants.PAD
         )
+        
         self.position_enc = nn.Parameter(
             get_sinusoid_encoding_table(n_position, d_word_vec).unsqueeze(0),
-            requires_grad=False,
+            requires_grad=False, 
         )
 
         self.layer_stack = nn.ModuleList(
@@ -71,7 +72,7 @@ class Encoder(nn.Module):
         )
 
     def forward(self, src_seq, mask, return_attns=False):
-
+        
         enc_slf_attn_list = []
         batch_size, max_len = src_seq.shape[0], src_seq.shape[1]
 
@@ -79,16 +80,16 @@ class Encoder(nn.Module):
         slf_attn_mask = mask.unsqueeze(1).expand(-1, max_len, -1)
 
         # -- Forward
-        if not self.training and src_seq.shape[1] > self.max_seq_len:
-            enc_output = self.src_word_emb(src_seq) + get_sinusoid_encoding_table(
-                src_seq.shape[1], self.d_model
-            )[: src_seq.shape[1], :].unsqueeze(0).expand(batch_size, -1, -1).to(
-                src_seq.device
-            )
-        else:
-            enc_output = self.src_word_emb(src_seq) + self.position_enc[
-                :, :max_len, :
-            ].expand(batch_size, -1, -1)
+        # if not self.training and src_seq.shape[1] > self.max_seq_len:
+        #     enc_output = self.src_word_emb(src_seq) + get_sinusoid_encoding_table(
+        #         src_seq.shape[1], self.d_model
+        #     )[: src_seq.shape[1], :].unsqueeze(0).expand(batch_size, -1, -1).to(
+        #         src_seq.device
+        #     )
+        # else:
+        enc_output = src_seq + self.position_enc[
+            :, :max_len, :
+        ].expand(batch_size, -1, -1)
 
         for enc_layer in self.layer_stack:
             enc_output, enc_slf_attn = enc_layer(
