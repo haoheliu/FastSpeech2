@@ -1,20 +1,23 @@
 path:
-  ckpt_path: "./output/ckpt/esc50"
-  log_path: "./output/log/esc50_disc"
-  result_path: "./output/result/esc50"
+  # ckpt_path: "./output/ckpt/esc50_disc"
+  # log_path: "./output/log/esc50_disc"
+  # result_path: "./output/result/esc50_disc"
+  ckpt_path: "./output/ckpt/exp1_esc50_diff_acc_e2e"
+  log_path: "./output/log/exp1_esc50_diff_acc_e2e"
+  result_path: "./output/result/exp1_esc50_diff_acc_e2e"
 optimizer:
-  batch_size: 16
+  batch_size: 4
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
   grad_clip_thresh: 1.0
-  grad_acc_step: 1
+  grad_acc_step: 8
   warm_up_step: 4000
   anneal_steps: [300000, 400000, 500000]
   anneal_rate: 0.3
 step:
   total_step: 900000
-  log_step: 20
+  log_step: 100
   synth_step: 1000
   val_step: 1000
   save_step: 10000

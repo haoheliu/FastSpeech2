@@ -81,6 +81,7 @@ def log(
             logger.add_scalar("Loss/r_loss", losses[8], step)
             logger.add_scalar("Loss/g_loss", losses[8], step)
             logger.add_scalar("Loss/gen_loss", losses[9], step)
+            logger.add_scalar("Loss/diff_loss", losses[10], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -111,24 +112,32 @@ def expand(values, durations):
     return np.array(out)
 
 
-def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config):
-
-    basename = targets[0][0]
-    src_len = predictions[8][0].item()
-    mel_len = predictions[9][0].item()
-    mel_target = targets[6][0, :mel_len].detach().transpose(0, 1)
-    mel_prediction = predictions[1][0, :mel_len].detach().transpose(0, 1)
-    duration = targets[11][0, :src_len].detach().cpu().numpy()
+def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config, diff_output=None):
+    index = np.random.choice(list(np.arange(targets[6].size(0))))
+    
+    basename = targets[0][index]
+    src_len = predictions[8][index].item()
+    mel_len = predictions[9][index].item()
+    mel_target = targets[6][index, :mel_len].detach().transpose(0, 1)
+    
+    if(diff_output is not None):
+        mel_prediction = diff_output[index, :mel_len].detach().transpose(0, 1)
+        postnet_mel_prediction = predictions[1][index, :mel_len].detach().transpose(0, 1)
+    else:
+        mel_prediction = predictions[1][index, :mel_len].detach().transpose(0, 1)
+        postnet_mel_prediction=mel_prediction
+        
+    duration = targets[11][index, :src_len].detach().cpu().numpy()
     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
-        pitch = targets[9][0, :src_len].detach().cpu().numpy()
+        pitch = targets[9][index :src_len].detach().cpu().numpy()
         pitch = expand(pitch, duration)
     else:
-        pitch = targets[9][0, :mel_len].detach().cpu().numpy()
+        pitch = targets[9][index, :mel_len].detach().cpu().numpy()
     if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
-        energy = targets[10][0, :src_len].detach().cpu().numpy()
+        energy = targets[10][index, :src_len].detach().cpu().numpy()
         energy = expand(energy, duration)
     else:
-        energy = targets[10][0, :mel_len].detach().cpu().numpy()
+        energy = targets[10][index, :mel_len].detach().cpu().numpy()
 
     with open(
         os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
@@ -139,10 +148,11 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     fig = plot_mel(
         [
             (mel_prediction.cpu().numpy(), pitch, energy),
+            (postnet_mel_prediction.cpu().numpy(), pitch, energy),
             (mel_target.cpu().numpy(), pitch, energy),
         ],
         stats,
-        ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
+        ["Synthetized Spectrogram", "Postnet mel prediction", "Ground-Truth Spectrogram"],
     )
 
     if vocoder is not None:

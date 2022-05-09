@@ -25,7 +25,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
         dataset,
-        batch_size=batch_size,
+        batch_size=1,
         shuffle=False,
         collate_fn=dataset.collate_fn,
     )
@@ -35,12 +35,15 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
 
     # Evaluation
     loss_sums = [0 for _ in range(6)]
+    idx = 0
     for batchs in loader:
-        for batch in batchs:
+        if(idx > 6): break # Run only one sample
+        for batch in batchs: 
+            idx += 1
             batch = to_device(batch, device)
             with torch.no_grad():
                 # Forward
-                output = model(*(batch[2:]))
+                output, (diff_output, _) = model(*(batch[2:]), gen=True)
 
                 # Cal Loss
                 losses,_ = Loss(batch, output)
@@ -61,8 +64,8 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
             vocoder,
             model_config,
             preprocess_config,
+            diff_output,
         )
-
         log(logger, step, losses=loss_means)
         log(
             logger,

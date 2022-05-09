@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+condor_log
+docker_stderror
 
 # C extensions
 *.so

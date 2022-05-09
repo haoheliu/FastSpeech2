@@ -16,7 +16,6 @@ from evaluate import evaluate
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 def main(args, configs):
     print("Prepare training ...")
 
@@ -80,7 +79,7 @@ def main(args, configs):
                 batch = to_device(batch, device)
 
                 # Forward
-                output = model(*(batch[2:]))
+                output, (diff_output, diff_loss) = model(*(batch[2:]), gen=False)
 
                 # Cal Loss
                 losses, (mel_predictions, mel_targets) = Loss(batch, output)
@@ -89,20 +88,20 @@ def main(args, configs):
                 r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
                 gen_loss = torch.tensor([0.0])
                 
-                if(step >2000):
+                if(step >2000000):
                     disc_real_outputs, _ = disc(mel_targets)
                     disc_generated_outputs, _ = disc(mel_predictions.detach())
                     disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
                     r_losses = torch.sum(torch.tensor(r_losses))
                     g_losses = torch.sum(torch.tensor(g_losses))
-                    d_loss = 100 * disc_loss / grad_acc_step
+                    d_loss = 5 * disc_loss / grad_acc_step # 100 *
                     d_loss.backward()
                     if step % grad_acc_step == 0:
                         nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)
                         opt_d.step_and_update_lr()
                         opt_d.zero_grad()
                 
-                if(step > 10000):
+                if(step > 6000000):
                     # Backward
                     disc_real_outputs, fmap_real = disc(mel_targets)
                     disc_generated_outputs, fmap_generated = disc(mel_predictions)
@@ -111,7 +110,8 @@ def main(args, configs):
                     total_loss = losses[0] + fmap_loss + gen_loss
                 else:
                     total_loss = losses[0]
-                    
+                
+                total_loss = total_loss + diff_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -125,12 +125,12 @@ def main(args, configs):
                 losses = list(losses)
                 
                 losses.extend([disc_loss, fmap_loss])
-                losses.extend([r_losses, g_losses, gen_loss])
+                losses.extend([r_losses, g_losses, gen_loss, diff_loss])
                 
                 if step % log_step == 0:
                     losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, ".format(
+                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, Diff Loss: {:.4f}, ".format(
                         *losses
                     )
 
@@ -148,6 +148,7 @@ def main(args, configs):
                         vocoder,
                         model_config,
                         preprocess_config,
+                        diff_output,
                     )
                     log(
                         train_logger,
@@ -180,15 +181,16 @@ def main(args, configs):
                     model.train()
 
                 if step % save_step == 0:
+                    path = os.path.join(train_config["path"]["ckpt_path"], "{}.pth.tar".format(step))
+                    print("save checkpoint at", path)
                     torch.save(
                         {
-                            "model": model.module.state_dict(),
+                            "model": model.state_dict(),
+                            "disc": disc.state_dict(),
                             "optimizer": optimizer._optimizer.state_dict(),
+                            "opt_d": opt_d._optimizer.state_dict(),
                         },
-                        os.path.join(
-                            train_config["path"]["ckpt_path"],
-                            "{}.pth.tar".format(step),
-                        ),
+                        path
                     )
 
                 if step == total_step:
