@@ -2,9 +2,9 @@ path:
   # ckpt_path: "./output/ckpt/esc50_disc"
   # log_path: "./output/log/esc50_disc"
   # result_path: "./output/result/esc50_disc"
-  ckpt_path: "./output/ckpt/exp1_esc50_diff_acc_e2e"
-  log_path: "./output/log/exp1_esc50_diff_acc_e2e"
-  result_path: "./output/result/exp1_esc50_diff_acc_e2e"
+  ckpt_path: "./output/ckpt/exp3_esc50_label_latent_pred"
+  log_path: "./output/log/exp3_esc50_label_latent_pred"
+  result_path: "./output/result/exp3_esc50_label_latent_pred"
 optimizer:
   batch_size: 4
   betas: [0.9, 0.98]
@@ -19,5 +19,5 @@ step:
   total_step: 900000
   log_step: 100
   synth_step: 1000
-  val_step: 1000
-  save_step: 10000
+  val_step: 4000
+  save_step: 20000

@@ -12,6 +12,7 @@ from transformer import Encoder, Decoder, PostNet
 from model.modules import VarianceAdaptor
 from utils.tools import get_mask_from_lengths
 import model.unet as unet
+import transformer.Constants as Constants
 
 class FastSpeech2(nn.Module):
     """ FastSpeech2 """
@@ -19,8 +20,16 @@ class FastSpeech2(nn.Module):
     def __init__(self, preprocess_config, model_config):
         super(FastSpeech2, self).__init__()
         self.model_config = model_config
+        n_src_vocab = 50 + 1 # TODO hard code here on symbol numbers
+        d_word_vec = model_config["transformer"]["encoder_hidden"]
 
+        self.src_word_emb = nn.Embedding(
+            n_src_vocab, d_word_vec, padding_idx=Constants.PAD
+        )
+                
         self.encoder = Encoder(model_config)
+        self.latent_encoder = Encoder(model_config)
+        self.latent_lstm = nn.LSTM(512, 512, num_layers=1, batch_first=True)
         self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config)
         self.decoder = Decoder(model_config)
         self.mel_linear = nn.Linear(
@@ -49,6 +58,21 @@ class FastSpeech2(nn.Module):
         self.diff = DiffusionDecoder(unet_in_channels=3)
         # self.proj= nn.Linear(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"] * 2, 1)
         
+    def build_frame_energy_mask(self, logmels):
+        energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
+        threshold = torch.max(energy, dim=1).values * 0.1
+        return energy > threshold[:, None]
+        
+    def build_input_tokens(self, speakers, logmels):
+        # speakers: [4,]
+        # logmels: [4, 496, 64]
+        # texts: [4, 62, 512]
+        bs, t_len, mel_dim = logmels.size()
+        tokens = speakers.unsqueeze(1).expand(speakers.size(0), t_len)
+        valid_tokens = tokens * self.build_frame_energy_mask(logmels)
+        valid_tokens = nn.MaxPool1d(8, stride=8)(valid_tokens.float()).int()
+        return valid_tokens
+    
     def forward(
         self,
         speakers, # (16,) The speaker id for each one in a batch, 
@@ -73,8 +97,19 @@ class FastSpeech2(nn.Module):
             else None
         )
 
-        output = self.encoder(texts, src_masks)
-
+        tokens = self.build_input_tokens(speakers, mels)
+        tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet
+        
+        latent_prediction,_ = self.latent_lstm(tokens_emb)
+        latent_prediction = self.latent_encoder(latent_prediction, src_masks)       
+        
+        if(gen):
+            output = self.encoder(latent_prediction, src_masks)
+        else:
+            output = self.encoder(texts, src_masks)
+        
+        latent_loss = torch.abs(texts - latent_prediction).mean()
+        
         if self.speaker_emb is not None:
             g = self.speaker_emb(speakers)
             g_diff = self.diff_speaker_embedding(speakers)
@@ -138,7 +173,7 @@ class FastSpeech2(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-        ), (diff_output, diff_loss)
+        ), (diff_output, diff_loss, latent_loss)
         
 class DiffusionDecoder(nn.Module):
   def __init__(self, 

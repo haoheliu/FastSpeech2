@@ -25,7 +25,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
         dataset,
-        batch_size=1,
+        batch_size=4,
         shuffle=False,
         collate_fn=dataset.collate_fn,
     )
@@ -43,7 +43,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
             batch = to_device(batch, device)
             with torch.no_grad():
                 # Forward
-                output, (diff_output, _) = model(*(batch[2:]), gen=True)
+                output, (diff_output, _, _) = model(*(batch[2:]), gen=True)
 
                 # Cal Loss
                 losses,_ = Loss(batch, output)

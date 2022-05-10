@@ -37,7 +37,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         n_position = config["max_seq_len"] + 1
-        n_src_vocab = len(symbols) + 1
+        n_src_vocab = 50 + 1 # TODO hard code here on symbol numbers
         d_word_vec = config["transformer"]["encoder_hidden"]
         n_layers = config["transformer"]["encoder_layer"]
         n_head = config["transformer"]["encoder_head"]
@@ -52,10 +52,6 @@ class Encoder(nn.Module):
 
         self.max_seq_len = config["max_seq_len"]
         self.d_model = d_model
-
-        self.src_word_emb = nn.Embedding(
-            n_src_vocab, d_word_vec, padding_idx=Constants.PAD
-        )
         
         self.position_enc = nn.Parameter(
             get_sinusoid_encoding_table(n_position, d_word_vec).unsqueeze(0),
@@ -71,7 +67,7 @@ class Encoder(nn.Module):
             ]
         )
 
-    def forward(self, src_seq, mask, return_attns=False):
+    def forward(self, src_seq, mask, return_attns=False, word_emb = False):
         
         enc_slf_attn_list = []
         batch_size, max_len = src_seq.shape[0], src_seq.shape[1]
@@ -87,9 +83,17 @@ class Encoder(nn.Module):
         #         src_seq.device
         #     )
         # else:
+
+        # if(word_emb):
+        #     enc_output = self.src_word_emb(src_seq) + self.position_enc[
+        #         :, :max_len, :
+        #     ].expand(batch_size, -1, -1)
+        # else:
+        
         enc_output = src_seq + self.position_enc[
             :, :max_len, :
         ].expand(batch_size, -1, -1)
+                
 
         for enc_layer in self.layer_stack:
             enc_output, enc_slf_attn = enc_layer(

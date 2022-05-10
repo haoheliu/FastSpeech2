@@ -79,7 +79,7 @@ def main(args, configs):
                 batch = to_device(batch, device)
 
                 # Forward
-                output, (diff_output, diff_loss) = model(*(batch[2:]), gen=False)
+                output, (diff_output, diff_loss, latent_loss) = model(*(batch[2:]), gen=False)
 
                 # Cal Loss
                 losses, (mel_predictions, mel_targets) = Loss(batch, output)
@@ -111,7 +111,7 @@ def main(args, configs):
                 else:
                     total_loss = losses[0]
                 
-                total_loss = total_loss + diff_loss
+                total_loss = total_loss + diff_loss + latent_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -125,12 +125,12 @@ def main(args, configs):
                 losses = list(losses)
                 
                 losses.extend([disc_loss, fmap_loss])
-                losses.extend([r_losses, g_losses, gen_loss, diff_loss])
+                losses.extend([r_losses, g_losses, gen_loss, diff_loss, latent_loss])
                 
                 if step % log_step == 0:
                     losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, Diff Loss: {:.4f}, ".format(
+                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, Diff Loss: {:.4f}, Lat Loss: {:.4f}".format(
                         *losses
                     )
 
