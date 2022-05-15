@@ -41,7 +41,7 @@ class WaveNetEncoder(nn.Module):
   def forward(self, x, x_mask, g=None):
     # x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
     x = self.pre(x) * x_mask.unsqueeze(1)
-    x = self.enc(x, x_mask.unsqueeze(1), g=g)
+    x = self.enc(x, x_mask.unsqueeze(1), g=g[..., None])
     stats = self.proj(x) * x_mask.unsqueeze(1)
     return stats.permute(0,2,1)
 
@@ -58,7 +58,7 @@ class WaveNet(nn.Module):
             n_src_vocab, d_word_vec, padding_idx=Constants.PAD
         )
         
-        self.wn = WaveNetEncoder(in_channels=512, out_channels=512, hidden_channels=512, kernel_size=5, dilation_rate=1, n_layers=16)
+        self.wn = WaveNetEncoder(in_channels=512, out_channels=512, hidden_channels=512, kernel_size=5, dilation_rate=1, n_layers=16, gin_channels=512)
                 
         self.mel_linear = nn.Linear(
             model_config["transformer"]["decoder_hidden"],
@@ -132,9 +132,19 @@ class WaveNet(nn.Module):
         else:
             tokens = texts
 
+        if self.speaker_emb is not None:
+            g = self.speaker_emb(speakers)
+        else: 
+            g=None
+            
         tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet    
-        output = self.wn(tokens_emb.permute(0,2,1), ~mel_masks) 
-          
+        output = self.wn(tokens_emb.permute(0,2,1), ~mel_masks, g=g) 
+    
+        if(g is not None):
+            output = output + g.unsqueeze(1).expand(
+                -1, max_mel_len, -1
+            )
+    
         if self.speaker_emb is not None:
             g = self.speaker_emb(speakers)
             output = output + g.unsqueeze(1).expand(
