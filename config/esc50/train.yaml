@@ -1,10 +1,24 @@
 path:
-  ckpt_path: "./output/ckpt/esc50_disc"
-  log_path: "./output/log/esc50_disc"
-  result_path: "./output/result/esc50_disc"
-  # ckpt_path: "./output/ckpt/exp4_16k_with_vocoder"
-  # log_path: "./output/log/exp4_16k_with_vocoder"
-  # result_path: "./output/result/exp4_16k_with_vocoder"
+  ckpt_path: "./output/ckpt/test"
+  log_path: "./output/log/test"
+  result_path: "./output/result/test"
+  
+  # ckpt_path: "./output/ckpt/exp2_esc50_label"
+  # log_path: "./output/log/exp2_esc50_label"
+  # result_path: "./output/result/exp2_esc50_label"
+
+  # ckpt_path: "./output/ckpt/exp3_esc50_label_latent_pred"
+  # log_path: "./output/log/exp3_esc50_label_latent_pred"
+  # result_path: "./output/result/exp3_esc50_label_latent_pred"
+
+  # ckpt_path: "./output/ckpt/exp5_16k_with_vocoder_label_only"
+  # log_path: "./output/log/exp5_16k_with_vocoder_label_only"
+  # result_path: "./output/result/exp5_16k_with_vocoder_label_only"
+
+  # ckpt_path: "./output/ckpt/exp7_16k_wavenet"
+  # log_path: "./output/log/exp7_16k_wavenet"
+  # result_path: "./output/result/exp7_16k_wavenet"
+
 optimizer:
   batch_size: 4
   betas: [0.9, 0.98]

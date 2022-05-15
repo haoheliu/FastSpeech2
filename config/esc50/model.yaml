@@ -1,3 +1,5 @@
+backbone: "wavenet" # wavenet, fs2
+
 transformer:
   encoder_layer: 4
   encoder_head: 2

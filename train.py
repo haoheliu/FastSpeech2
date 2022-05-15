@@ -149,6 +149,7 @@ def main(args, configs):
                         preprocess_config,
                         diff_output,
                     )
+                    
                     log(
                         train_logger,
                         fig=fig,
@@ -199,7 +200,6 @@ def main(args, configs):
 
             inner_bar.update(1)
         epoch += 1
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -5,13 +5,19 @@ import torch
 import numpy as np
 
 import hifigan
-from model import FastSpeech2, ScheduledOptim
+from model import FastSpeech2, ScheduledOptim, WaveNet
 from discriminator import SpecDiscriminator
 
 def get_model(args, configs, device, train=False):
     (preprocess_config, model_config, train_config) = configs
 
-    model = FastSpeech2(preprocess_config, model_config).to(device)
+    if(model_config["backbone"]=="wavenet"):
+        model = WaveNet(preprocess_config, model_config).to(device)
+    elif(model_config["backbone"]=="fs2"):
+        model = FastSpeech2(preprocess_config, model_config).to(device)
+    else:
+        raise ValueError("Error backbone setting")
+    
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
