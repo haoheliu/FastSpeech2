@@ -44,7 +44,7 @@ def main(args, configs):
     print("Number of FastSpeech2 Parameters:", num_param)
 
     # Load vocoder 
-    vocoder = None # get_vocoder(model_config, device)
+    vocoder = get_vocoder(model_config, device)
 
     # Init logger
     for p in train_config["path"].values():
@@ -138,7 +138,6 @@ def main(args, configs):
                         f.write(message1 + message2 + "\n")
 
                     outer_bar.write(message1 + message2)
-
                     log(train_logger, step, losses=losses)
 
                 if step % synth_step == 0:

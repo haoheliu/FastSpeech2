@@ -53,7 +53,7 @@ class FastSpeech2(nn.Module):
             )
             self.diff_speaker_embedding = nn.Embedding(
                 n_speaker,
-                64,
+                preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
             )
         self.diff = DiffusionDecoder(unet_in_channels=3)
         # self.proj= nn.Linear(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"] * 2, 1)
@@ -90,25 +90,30 @@ class FastSpeech2(nn.Module):
         d_control=1.0,
         gen=False
     ):
+        
         src_masks = get_mask_from_lengths(src_lens, max_src_len)
+        
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
             if mel_lens is not None
             else None
         )
-
-        tokens = self.build_input_tokens(speakers, mels)
+        if(mels is not None):
+            tokens = self.build_input_tokens(speakers, mels)
+        else:
+            tokens = texts
+            
         tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet
-        
         latent_prediction,_ = self.latent_lstm(tokens_emb)
         latent_prediction = self.latent_encoder(latent_prediction, src_masks)       
         
         if(gen):
             output = self.encoder(latent_prediction, src_masks)
+            latent_loss = torch.tensor([0.0])
+            max_mel_len = 8 * max_src_len
         else:
             output = self.encoder(texts, src_masks)
-        
-        latent_loss = torch.abs(texts - latent_prediction).mean()
+            latent_loss = torch.abs(texts - latent_prediction).mean()
         
         if self.speaker_emb is not None:
             g = self.speaker_emb(speakers)

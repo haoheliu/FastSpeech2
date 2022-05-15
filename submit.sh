@@ -21,4 +21,7 @@ EXP_NAME="fs2_esc50_16k_gen"
 ######################## RUNNING ENTRY ########################
 # $1=pcen@delta_mfcc
 
+# python3 prepare_align.py config/esc50/preprocess.yaml
+# python3 preprocess.py config/esc50/preprocess.yaml
+
 python3 train.py -p config/esc50/preprocess.yaml -m config/esc50/model.yaml -t config/esc50/train.yaml

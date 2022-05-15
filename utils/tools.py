@@ -79,10 +79,10 @@ def log(
             logger.add_scalar("Loss/disc_loss", losses[6], step)
             logger.add_scalar("Loss/fmap_loss", losses[7], step)
             logger.add_scalar("Loss/r_loss", losses[8], step)
-            logger.add_scalar("Loss/g_loss", losses[8], step)
-            logger.add_scalar("Loss/gen_loss", losses[9], step)
-            logger.add_scalar("Loss/diff_loss", losses[10], step)
-            logger.add_scalar("Loss/latent_loss", losses[11], step)
+            logger.add_scalar("Loss/g_loss", losses[9], step)
+            logger.add_scalar("Loss/gen_loss", losses[10], step)
+            logger.add_scalar("Loss/diff_loss", losses[11], step)
+            logger.add_scalar("Loss/latent_loss", losses[12], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -158,7 +158,6 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
 
     if vocoder is not None:
         from .model import vocoder_infer
-
         wav_reconstruction = vocoder_infer(
             mel_target.unsqueeze(0),
             vocoder,
@@ -177,14 +176,17 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     return fig, wav_reconstruction, wav_prediction, basename
 
 
-def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
-
+def synth_samples(targets, predictions, diffusion, vocoder, model_config, preprocess_config, path):
+    
+    (diff_output, diff_loss, latent_loss) = diffusion
+    
     basenames = targets[0]
     for i in range(len(predictions[0])):
         basename = basenames[i]
         src_len = predictions[8][i].item()
         mel_len = predictions[9][i].item()
         mel_prediction = predictions[1][i, :mel_len].detach().transpose(0, 1)
+        diff_output = diff_output[i, :mel_len].detach().transpose(0, 1)
         duration = predictions[5][i, :src_len].detach().cpu().numpy()
         if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
             pitch = predictions[2][i, :src_len].detach().cpu().numpy()
@@ -208,9 +210,21 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
                 (mel_prediction.cpu().numpy(), pitch, energy),
             ],
             stats,
-            ["Synthetized Spectrogram"],
+            ["Synthetized Spectrogram by PostNet"],
         )
-        plt.savefig(os.path.join(path, "{}.png".format(basename)))
+        # np.save("{}_postnet.npy".format(basename), mel_prediction.cpu().numpy())
+        plt.savefig(os.path.join(path, "{}_postnet_2.png".format(basename)))
+        plt.close()
+
+        fig = plot_mel(
+            [
+                (diff_output.cpu().numpy(), pitch, energy),
+            ],
+            stats,
+            ["Synthetized Spectrogram by Diffusion"],
+        )
+        # np.save("{}_diff.npy".format(basename), mel_prediction.cpu().numpy())
+        plt.savefig(os.path.join(path, "{}_diff_2.png".format(basename)))
         plt.close()
 
     from .model import vocoder_infer

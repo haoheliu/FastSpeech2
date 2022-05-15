@@ -54,7 +54,6 @@ def preprocess_english(text, preprocess_config):
 
     return np.array(sequence)
 
-
 def preprocess_mandarin(text, preprocess_config):
     lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
 
@@ -91,21 +90,32 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
         batch = to_device(batch, device)
         with torch.no_grad():
             # Forward
-            output = model(
+            output, (diff_output, diff_loss, latent_loss) = model(
                 *(batch[2:]),
                 p_control=pitch_control,
                 e_control=energy_control,
-                d_control=duration_control
+                d_control=duration_control,
+                gen=True,
             )
+            diffusion = (diff_output, diff_loss, latent_loss)
             synth_samples(
                 batch,
                 output,
+                diffusion,
                 vocoder,
                 model_config,
                 preprocess_config,
                 train_config["path"]["result_path"],
             )
 
+def generate_general_sound_token(sound_idx):
+    sequence = []
+    result = int(sound_idx[0])
+    for i in range(50):
+        if(i < 10): sequence.append(0)
+        if(i > 40): sequence.append(0)
+        else: sequence.append(result)
+    return np.array(sequence), len(sequence)
 
 if __name__ == "__main__":
 
@@ -201,13 +211,21 @@ if __name__ == "__main__":
     if args.mode == "single":
         ids = raw_texts = [args.text[:100]]
         speakers = np.array([args.speaker_id])
-        if preprocess_config["preprocessing"]["text"]["language"] == "en":
-            texts = np.array([preprocess_english(args.text, preprocess_config)])
-        elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
-            texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
-        text_lens = np.array([len(texts[0])])
+        # if preprocess_config["preprocessing"]["text"]["language"] == "en":
+        #     texts = np.array([preprocess_english(args.text, preprocess_config)])
+        # elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
+        #     texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
+        # text_lens = np.array([len(texts[0])])
+        
+        #########################################
+        # TODO modification here
+        texts, text_lens = generate_general_sound_token(raw_texts)
+        texts = texts[None,...]
+        text_lens = np.array([text_lens])
+        #########################################
+        
         batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens))]
 
     control_values = args.pitch_control, args.energy_control, args.duration_control
-
+    
     synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)

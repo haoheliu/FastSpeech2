@@ -12,7 +12,6 @@ def init_weights(m, mean=0.0, std=0.01):
     if classname.find("Conv") != -1:
         m.weight.data.normal_(mean, std)
 
-
 def get_padding(kernel_size, dilation=1):
     return int((kernel_size * dilation - dilation) / 2)
 
@@ -116,7 +115,7 @@ class Generator(torch.nn.Module):
         self.num_kernels = len(h.resblock_kernel_sizes)
         self.num_upsamples = len(h.upsample_rates)
         self.conv_pre = weight_norm(
-            Conv1d(80, h.upsample_initial_channel, 7, 1, padding=3)
+            Conv1d(64, h.upsample_initial_channel, 7, 1, padding=3)
         )
         resblock = ResBlock
 

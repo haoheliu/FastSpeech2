@@ -1,7 +1,7 @@
 dataset: "esc50"
 
 path:
-  corpus_path: "/vol/research/dcase2022/datasets/esc50/ESC-50-master/audio"
+  corpus_path: "/vol/research/dcase2022/datasets/esc50/ESC-50-master/category"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
   raw_path: "./raw_data/esc50"
   preprocessed_path: "./preprocessed_data/esc50"

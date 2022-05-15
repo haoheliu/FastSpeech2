@@ -1,10 +1,10 @@
 path:
-  # ckpt_path: "./output/ckpt/esc50_disc"
-  # log_path: "./output/log/esc50_disc"
-  # result_path: "./output/result/esc50_disc"
-  ckpt_path: "./output/ckpt/exp3_esc50_label_latent_pred"
-  log_path: "./output/log/exp3_esc50_label_latent_pred"
-  result_path: "./output/result/exp3_esc50_label_latent_pred"
+  ckpt_path: "./output/ckpt/esc50_disc"
+  log_path: "./output/log/esc50_disc"
+  result_path: "./output/result/esc50_disc"
+  # ckpt_path: "./output/ckpt/exp4_16k_with_vocoder"
+  # log_path: "./output/log/exp4_16k_with_vocoder"
+  # result_path: "./output/result/exp4_16k_with_vocoder"
 optimizer:
   batch_size: 4
   betas: [0.9, 0.98]
@@ -17,7 +17,7 @@ optimizer:
   anneal_rate: 0.3
 step:
   total_step: 900000
-  log_step: 100
+  log_step: 10
   synth_step: 1000
   val_step: 4000
   save_step: 20000

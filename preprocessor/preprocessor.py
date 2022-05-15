@@ -76,8 +76,9 @@ class Preprocessor:
                     continue
                 else:
                     info, pitch, energy, n = ret
+                    # print(pitch, energy)
                 out.append(info)
-
+                # print(len(pitch), len(energy))
                 if len(pitch) > 0:
                     pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
                 if len(energy) > 0:
@@ -167,12 +168,12 @@ class Preprocessor:
         #     return None
 
         # Read and trim wav files
-        wav, sr = librosa.load(wav_path)
+        wav, sr = librosa.load(wav_path, sr=None)
         
         start = 0
         duration = librosa.get_duration(wav, sr=sr)
-        duration = np.array([8] * int(duration*100 / 8))
-        end = np.sum(duration) * 0.01
+        duration = np.array([8] * int(duration*(self.sampling_rate/self.hop_length) / 8))
+        end = np.sum(duration) * (self.hop_length/self.sampling_rate)
         
         wav = wav[
             int(self.sampling_rate * start) : int(self.sampling_rate * end)
@@ -184,14 +185,16 @@ class Preprocessor:
             self.sampling_rate,
             frame_period=self.hop_length / self.sampling_rate * 1000,
         )
+        
         pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
 
         pitch = pitch[: sum(duration)]
         if np.sum(pitch != 0) <= 1:
             return None
-
+        
         # Compute mel-scale spectrogram and energy
         mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+        # import ipdb; ipdb.set_trace()
         mel_spectrogram = mel_spectrogram[:, : sum(duration)]
         energy = energy[: sum(duration)]
 
@@ -210,6 +213,7 @@ class Preprocessor:
             pos = 0
             for i, d in enumerate(duration):
                 if d > 0:
+                    # print(pos, d, pitch[pos : pos + d], np.mean(pitch[pos : pos + d]))
                     pitch[i] = np.mean(pitch[pos : pos + d])
                 else:
                     pitch[i] = 0
@@ -242,11 +246,11 @@ class Preprocessor:
             os.path.join(self.out_dir, "mel", mel_filename),
             mel_spectrogram.T,
         )
-
+        pitch, energy = self.remove_outlier(pitch), self.remove_outlier(energy)
         return (
             "|".join([basename, speaker, emb_path]),
-            self.remove_outlier(pitch),
-            self.remove_outlier(energy),
+            pitch,
+            energy,
             mel_spectrogram.shape[1],
         )
 
