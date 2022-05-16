@@ -140,18 +140,11 @@ class WaveNet(nn.Module):
         tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet    
         output = self.wn(tokens_emb.permute(0,2,1), ~mel_masks, g=g) 
     
-        if(g is not None):
-            output = output + g.unsqueeze(1).expand(
-                -1, max_mel_len, -1
-            )
-    
-        if self.speaker_emb is not None:
-            g = self.speaker_emb(speakers)
-            output = output + g.unsqueeze(1).expand(
-                -1, max_mel_len, -1
-            )
-        else: 
-            g=None
+        # if(g is not None):
+        #     output = output + g.unsqueeze(1).expand(
+        #         -1, max_mel_len, -1
+        #     )
+
         output = self.mel_linear(output)
         postnet_output = self.postnet(output) + output # (16, 496, 64)
         ######################################## Dirty things ##############################################

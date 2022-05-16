@@ -1,7 +1,7 @@
 path:
-  ckpt_path: "./output/ckpt/test"
-  log_path: "./output/log/test"
-  result_path: "./output/result/test"
+  # ckpt_path: "./output/ckpt/test"
+  # log_path: "./output/log/test"
+  # result_path: "./output/result/test"
   
   # ckpt_path: "./output/ckpt/exp2_esc50_label"
   # log_path: "./output/log/exp2_esc50_label"
@@ -15,9 +15,9 @@ path:
   # log_path: "./output/log/exp5_16k_with_vocoder_label_only"
   # result_path: "./output/result/exp5_16k_with_vocoder_label_only"
 
-  # ckpt_path: "./output/ckpt/exp7_16k_wavenet"
-  # log_path: "./output/log/exp7_16k_wavenet"
-  # result_path: "./output/result/exp7_16k_wavenet"
+  ckpt_path: "./output/ckpt/exp7_16k_wavenet"
+  log_path: "./output/log/exp7_16k_wavenet"
+  result_path: "./output/result/exp7_16k_wavenet"
 
 optimizer:
   batch_size: 4
