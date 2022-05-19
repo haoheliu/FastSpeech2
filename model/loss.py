@@ -85,12 +85,12 @@ class FastSpeech2Loss(nn.Module):
         energy_targets.requires_grad = False
         mel_targets.requires_grad = False
 
-        if self.pitch_feature_level == "phoneme_level":
-            pitch_predictions = pitch_predictions.masked_select(src_masks)
-            pitch_targets = pitch_targets.masked_select(src_masks)
-        elif self.pitch_feature_level == "frame_level":
-            pitch_predictions = pitch_predictions.masked_select(mel_masks)
-            pitch_targets = pitch_targets.masked_select(mel_masks)
+        # if self.pitch_feature_level == "phoneme_level":
+        #     pitch_predictions = pitch_predictions.masked_select(src_masks)
+        #     pitch_targets = pitch_targets.masked_select(src_masks)
+        # elif self.pitch_feature_level == "frame_level":
+        #     pitch_predictions = pitch_predictions.masked_select(mel_masks)
+        #     pitch_targets = pitch_targets.masked_select(mel_masks)
 
         if self.energy_feature_level == "phoneme_level":
             energy_predictions = energy_predictions.masked_select(src_masks)
@@ -99,8 +99,8 @@ class FastSpeech2Loss(nn.Module):
             energy_predictions = energy_predictions.masked_select(mel_masks)
             energy_targets = energy_targets.masked_select(mel_masks)
 
-        log_duration_predictions = log_duration_predictions.masked_select(src_masks)
-        log_duration_targets = log_duration_targets.masked_select(src_masks)
+        # log_duration_predictions = log_duration_predictions.masked_select(src_masks)
+        # log_duration_targets = log_duration_targets.masked_select(src_masks)
 
         # mel_predictions = mel_predictions.masked_select(mel_masks.unsqueeze(-1))
         # postnet_mel_predictions = postnet_mel_predictions.masked_select(
@@ -108,17 +108,23 @@ class FastSpeech2Loss(nn.Module):
         # )
         # mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
         
-        mel_loss = 45 * self.mae_loss(mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
-        postnet_mel_loss = 45 * self.mae_loss(postnet_mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
-
-        pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
+        # mel_loss = 45 * self.mae_loss(mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
+        # postnet_mel_loss = 45 * self.mae_loss(postnet_mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
+        postnet_mel_loss = torch.tensor([0.0]).cuda()
+        
+        # pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
         energy_loss = self.mse_loss(energy_predictions, energy_targets)
-        duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
+        # duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss
+            energy_loss
         )
 
+        mel_loss = torch.tensor([0.0]).cuda()
+        
+        pitch_loss = torch.tensor([0.0]).cuda()
+        duration_loss = torch.tensor([0.0]).cuda()
+        
         return (
             total_loss,
             mel_loss,

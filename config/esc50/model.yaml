@@ -1,10 +1,10 @@
 transformer:
-  encoder_layer: 4
-  encoder_head: 2
-  encoder_hidden: 512
-  decoder_layer: 6
-  decoder_head: 2
-  decoder_hidden: 512
+  encoder_layer: 5
+  encoder_head: 5
+  encoder_hidden: 192
+  decoder_layer: 5
+  decoder_head: 5
+  decoder_hidden: 192
   conv_filter_size: 1024
   conv_kernel_size: [9, 1]
   encoder_dropout: 0.2

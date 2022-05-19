@@ -25,7 +25,7 @@ environment = "mount=/vol/research/"
 +GPUMem = 8096
 # -------------------------------------
 # Requirements for the Job
-requirements = (CUDADeviceName == "GeForce GTX TITAN X") || ((CUDADeviceName == "GeForce RTX 3090")) && (machine != "aisurrey16.surrey.ac.uk") && (machine != "aisurrey13.surrey.ac.uk") && (machine != "aisurrey04.surrey.ac.uk")
+requirements = (CUDADeviceName == "GeForce GTX TITAN X") || ((CUDADeviceName == "GeForce RTX 3090")) && (machine == "aisurrey18.surrey.ac.uk") 
 # && (machine != "aisurrey07.surrey.ac.uk") && (machine != "aisurrey06.surrey.ac.uk") && (machine != "aisurrey01.surrey.ac.uk") && (machine != "aisurrey04.surrey.ac.uk")
 # --------------------------------------
 # Resources

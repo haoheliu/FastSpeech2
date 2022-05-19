@@ -14,6 +14,84 @@ from utils.tools import get_mask_from_lengths, pad
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+class EnergyAdaptor(nn.Module):
+    """Variance Adaptor"""
+
+    def __init__(self, preprocess_config, model_config):
+        super(EnergyAdaptor, self).__init__()
+        self.energy_predictor = VariancePredictor(model_config)
+
+        self.energy_feature_level = preprocess_config["preprocessing"]["energy"][
+            "feature"
+        ]
+        assert self.energy_feature_level in ["phoneme_level", "frame_level"]
+
+        energy_quantization = model_config["variance_embedding"]["energy_quantization"]
+        n_bins = model_config["variance_embedding"]["n_bins"]
+        assert energy_quantization in ["linear", "log"]
+        with open(
+            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+        ) as f:
+            stats = json.load(f)
+            energy_min, energy_max = stats["energy"][:2]
+            
+        if energy_quantization == "log":
+            self.energy_bins = nn.Parameter(
+                torch.exp(
+                    torch.linspace(np.log(energy_min), np.log(energy_max), n_bins - 1)
+                ),
+                requires_grad=False,
+            )
+        else:
+            self.energy_bins = nn.Parameter(
+                torch.linspace(energy_min, energy_max, n_bins - 1),
+                requires_grad=False,
+            )
+
+        self.energy_embedding = nn.Embedding(
+            n_bins, model_config["transformer"]["encoder_hidden"]
+        )
+
+    def get_energy_embedding(self, x, target, mask, control):
+        prediction = self.energy_predictor(x, mask)
+        if target is not None:
+            embedding = self.energy_embedding(torch.bucketize(target, self.energy_bins))
+        else:
+            prediction = prediction * control
+            embedding = self.energy_embedding(
+                torch.bucketize(prediction, self.energy_bins)
+            )
+        return prediction, embedding
+
+    def forward(
+        self,
+        x,
+        src_mask,
+        mel_mask=None,
+        max_len=None,
+        pitch_target=None,
+        energy_target=None,
+        duration_target=None,
+        p_control=1.0,
+        e_control=1.0,
+        d_control=1.0,
+    ):
+        if self.energy_feature_level == "frame_level":
+            energy_prediction, energy_embedding = self.get_energy_embedding(
+                x, energy_target, mel_mask, p_control
+            )
+            x = x + energy_embedding
+
+        return (
+            x,
+            None,
+            energy_prediction,
+            None,
+            None,
+            None,
+            mel_mask,
+        )
+        
 class VarianceAdaptor(nn.Module):
     """Variance Adaptor"""
 

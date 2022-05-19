@@ -1,12 +1,18 @@
 path:
-  ckpt_path: "./output/ckpt/esc50_disc"
-  log_path: "./output/log/esc50_disc"
-  result_path: "./output/result/esc50_disc"
+  # ckpt_path: "./output/ckpt/test"
+  # log_path: "./output/log/test"
+  # result_path: "./output/result/test"
+
   # ckpt_path: "./output/ckpt/exp4_16k_with_vocoder"
   # log_path: "./output/log/exp4_16k_with_vocoder"
   # result_path: "./output/result/exp4_16k_with_vocoder"
+
+  ckpt_path: "./output/ckpt/exp9_glow_decoder"
+  log_path: "./output/log/exp9_glow_decoder"
+  result_path: "./output/result/exp9_glow_decoder"
+
 optimizer:
-  batch_size: 4
+  batch_size: 16
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
@@ -17,7 +23,7 @@ optimizer:
   anneal_rate: 0.3
 step:
   total_step: 900000
-  log_step: 10
+  log_step: 20
   synth_step: 1000
   val_step: 4000
-  save_step: 20000
+  save_step: 200

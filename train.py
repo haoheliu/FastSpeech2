@@ -13,8 +13,17 @@ from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
 from evaluate import evaluate
+import math
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def mle_lossfunc(z, m, logs, logdet, mask):
+    # import ipdb; ipdb.set_trace()
+    l = torch.sum(logs) + 0.5 * torch.sum(torch.exp(-2 * logs) * ((z - m)**2)) # neg normal likelihood w/o the constant term
+    l = l - torch.sum(logdet) # log jacobian determinant
+    l = l / torch.sum(torch.ones_like(z) * mask) # averaging across batch, channel and time axes
+    l = l + 0.5 * math.log(2 * math.pi) # add the remaining constant term
+    return l
 
 def main(args, configs):
     print("Prepare training ...")
@@ -79,10 +88,11 @@ def main(args, configs):
                 batch = to_device(batch, device)
 
                 # Forward
-                output, (diff_output, diff_loss, latent_loss) = model(*(batch[2:]), gen=False)
+                output, (z,m,logs,logdet,mel_masks) = model(*(batch[2:]), gen=False)
 
                 # Cal Loss
                 losses, (mel_predictions, mel_targets) = Loss(batch, output)
+                mle_loss = mle_lossfunc(z,m,logs,logdet,~mel_masks.unsqueeze(1))
                 
                 disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
                 r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
@@ -111,7 +121,7 @@ def main(args, configs):
                 else:
                     total_loss = losses[0]
                 
-                total_loss = total_loss + diff_loss + latent_loss
+                total_loss = total_loss + mle_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -125,12 +135,12 @@ def main(args, configs):
                 losses = list(losses)
                 
                 losses.extend([disc_loss, fmap_loss])
-                losses.extend([r_losses, g_losses, gen_loss, diff_loss, latent_loss])
+                losses.extend([r_losses, g_losses, gen_loss, mle_loss])
                 
                 if step % log_step == 0:
                     losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, Diff Loss: {:.4f}, Lat Loss: {:.4f}".format(
+                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, MLE Loss: {:.4f}".format(
                         *losses
                     )
 
@@ -147,7 +157,6 @@ def main(args, configs):
                         vocoder,
                         model_config,
                         preprocess_config,
-                        diff_output,
                     )
                     log(
                         train_logger,
