@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import sys
 sys.path.append("/vol/research/ai4sound/project/audio_generation/FastSpeech2")
-
+import numpy as np
 from transformer import Encoder, Decoder, PostNet
 from model.modules import VarianceAdaptor, EnergyAdaptor
 from utils.tools import get_mask_from_lengths
@@ -31,8 +31,8 @@ class FramePriorNet(torch.nn.Module):
       )]
     self.proj = torch.nn.Conv1d(hidden_channel, out_channels * 2, 1)
     self.out_channels = out_channels
-    self.smooth_length = 31
-    self.pooling = torch.nn.AvgPool1d(kernel_size=self.smooth_length, stride=self.smooth_length, padding=0)
+    self.smooth_length = 20
+    self.pooling = torch.nn.AvgPool1d(kernel_size=self.smooth_length, stride=self.smooth_length // 2, padding=5)
 
   def smooth(self, x):
     # x: [bs, 64, 496]
@@ -42,7 +42,7 @@ class FramePriorNet(torch.nn.Module):
     
     x = self.pooling(x)
     x = x.unsqueeze(-1)
-    x = x.expand(bs, mel_bin, mel_len // self.smooth_length, self.smooth_length)
+    x = x.expand(bs, mel_bin, (mel_len // self.smooth_length) * 2, self.smooth_length // 2)
     x = x.reshape(bs, mel_bin, mel_len)
     return x
     
@@ -51,7 +51,7 @@ class FramePriorNet(torch.nn.Module):
     for f in self.conv:
       x = f(x)
       x = x * x_mask
-    # x = self.smooth(x)
+    x = self.smooth(x)
     # import ipdb; ipdb.set_trace()
     stats = self.proj(x) * x_mask # todo
     m, logs = torch.split(stats, self.out_channels, dim=1)
@@ -171,7 +171,9 @@ class FastSpeech2(nn.Module):
         
     def build_frame_energy_mask(self, logmels):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
-        threshold = torch.max(energy, dim=1).values * 0.1
+        cutoff = float(np.random.uniform(0.1,0.3))
+        threshold = torch.max(energy, dim=1).values * cutoff
+        
         return energy > threshold[:, None]
         
     def build_input_tokens(self, speakers, logmels):
@@ -180,7 +182,7 @@ class FastSpeech2(nn.Module):
         # texts: [4, 62, 512]
         bs, t_len, mel_dim = logmels.size()
         tokens = speakers.unsqueeze(1).expand(speakers.size(0), t_len)
-        valid_tokens = tokens # * self.build_frame_energy_mask(logmels)
+        valid_tokens = tokens * self.build_frame_energy_mask(logmels)
         # valid_tokens = nn.MaxPool1d(8, stride=8)(valid_tokens.float()).int()
         return valid_tokens
     
@@ -207,7 +209,9 @@ class FastSpeech2(nn.Module):
             else None
         )
         
-        tokens = self.build_input_tokens(speakers, mels)    
+        tokens = self.build_input_tokens(speakers, mels)
+        tokens = tokens * (~mel_masks)
+            
         tokens_emb = self.src_word_emb(tokens) * (~mel_masks.unsqueeze(-1))
         
         output,_ = self.latent_lstm(tokens_emb)
@@ -246,7 +250,7 @@ class FastSpeech2(nn.Module):
             
         output = output * (~mel_masks.unsqueeze(-1))
         # import ipdb; ipdb.set_trace()
-        # output = self.encoder(output, mel_masks)
+        output = self.encoder(output, mel_masks)
         output = self.mel_linear(output) * (~mel_masks.unsqueeze(-1))
         output, m, logs = self.frame_prior_net(output.permute(0,2,1), ~mel_masks.unsqueeze(1))
         
