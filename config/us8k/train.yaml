@@ -7,9 +7,9 @@ path:
   # log_path: "./output/log/exp4_16k_with_vocoder"
   # result_path: "./output/result/exp4_16k_with_vocoder"
 
-  ckpt_path: "./output/ckpt/exp10_glow_pool_fpn"
-  log_path: "./output/log/exp10_glow_pool_fpn"
-  result_path: "./output/result/exp10_glow_pool_fpn"
+  ckpt_path: "./output/ckpt/us8k_exp1_glow"
+  log_path: "./output/log/us8k_exp1_glow"
+  result_path: "./output/result/us8k_exp1_glow"
 
 optimizer:
   batch_size: 16

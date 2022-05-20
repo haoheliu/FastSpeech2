@@ -43,7 +43,6 @@ def main(args, configs):
         shuffle=True,
         collate_fn=dataset.collate_fn,
     )
-    
     disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
     model, optimizer = get_model(args, configs, device, train=True)
@@ -151,6 +150,10 @@ def main(args, configs):
                     log(train_logger, step, losses=losses)
 
                 if step % synth_step == 0:
+                    with torch.no_grad():
+                        model.eval()
+                        output, (z,m,logs,logdet,mel_masks) = model(*(batch[2:]), gen=True)
+                    model.train()
                     fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
                         batch,
                         output,

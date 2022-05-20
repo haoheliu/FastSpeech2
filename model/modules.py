@@ -19,21 +19,45 @@ class EnergyAdaptor(nn.Module):
 
     def __init__(self, preprocess_config, model_config):
         super(EnergyAdaptor, self).__init__()
+        self.pitch_predictor = VariancePredictor(model_config)
         self.energy_predictor = VariancePredictor(model_config)
-
+        
+        self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
+            "feature"
+        ]
         self.energy_feature_level = preprocess_config["preprocessing"]["energy"][
             "feature"
         ]
+        assert self.pitch_feature_level in ["phoneme_level", "frame_level"]
         assert self.energy_feature_level in ["phoneme_level", "frame_level"]
 
+        pitch_quantization = model_config["variance_embedding"]["pitch_quantization"]
         energy_quantization = model_config["variance_embedding"]["energy_quantization"]
+        
         n_bins = model_config["variance_embedding"]["n_bins"]
+        
+        assert pitch_quantization in ["linear", "log"]
         assert energy_quantization in ["linear", "log"]
+        
         with open(
             os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
         ) as f:
             stats = json.load(f)
+            pitch_min, pitch_max = stats["pitch"][:2]
             energy_min, energy_max = stats["energy"][:2]
+            
+        if pitch_quantization == "log":
+            self.pitch_bins = nn.Parameter(
+                torch.exp(
+                    torch.linspace(np.log(pitch_min), np.log(pitch_max), n_bins - 1)
+                ),
+                requires_grad=False,
+            )
+        else:
+            self.pitch_bins = nn.Parameter(
+                torch.linspace(pitch_min, pitch_max, n_bins - 1),
+                requires_grad=False,
+            )
             
         if energy_quantization == "log":
             self.energy_bins = nn.Parameter(
@@ -48,6 +72,10 @@ class EnergyAdaptor(nn.Module):
                 requires_grad=False,
             )
 
+        self.pitch_embedding = nn.Embedding(
+            n_bins, model_config["transformer"]["encoder_hidden"]
+        )
+        
         self.energy_embedding = nn.Embedding(
             n_bins, model_config["transformer"]["encoder_hidden"]
         )
@@ -60,9 +88,20 @@ class EnergyAdaptor(nn.Module):
             prediction = prediction * control
             embedding = self.energy_embedding(
                 torch.bucketize(prediction, self.energy_bins)
-            )
+        )
         return prediction, embedding
 
+    def get_pitch_embedding(self, x, target, mask, control):
+        prediction = self.pitch_predictor(x, mask)
+        if target is not None:
+            embedding = self.pitch_embedding(torch.bucketize(target, self.pitch_bins))
+        else:
+            prediction = prediction * control
+            embedding = self.pitch_embedding(
+                torch.bucketize(prediction, self.pitch_bins)
+            )
+        return prediction, embedding
+    
     def forward(
         self,
         x,
@@ -82,9 +121,15 @@ class EnergyAdaptor(nn.Module):
             )
             x = x + energy_embedding
 
+        if self.pitch_feature_level == "frame_level":
+            pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+                x, pitch_target, mel_mask, p_control
+            )
+            x = x + pitch_embedding
+            
         return (
             x,
-            None,
+            pitch_prediction,
             energy_prediction,
             None,
             None,

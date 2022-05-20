@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 from text import text_to_sequence
 from utils.tools import pad_1D, pad_2D
 
-
 class Dataset(Dataset):
     def __init__(
         self, filename, preprocess_config, train_config, sort=False, drop_last=False
@@ -18,10 +17,6 @@ class Dataset(Dataset):
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
         self.batch_size = train_config["optimizer"]["batch_size"]
 
-        # self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
-            # filename
-        # )
-        
         self.basename, self.speaker, self.text = self.process_meta(
             filename
         )
@@ -40,19 +35,25 @@ class Dataset(Dataset):
         speaker_id = self.speaker_map[speaker]
         # raw_text = self.raw_text[idx]
         # phone = np.array(text_to_sequence(self.text[idx], self.cleaners))
-        phone = (np.load(self.text[idx]).T - 3.3425786) / 6.9992614
         
         mel_path = os.path.join(
             self.preprocessed_path,
             "mel",
             "{}-mel-{}.npy".format(speaker, basename),
         )
+        
         mel = np.load(mel_path)
         pitch_path = os.path.join(
             self.preprocessed_path,
             "pitch",
             "{}-pitch-{}.npy".format(speaker, basename),
         )
+        
+        if(os.path.exists(self.text[idx])):
+            phone = (np.load(self.text[idx]).T - 3.3425786) / 6.9992614
+        else:
+            phone = np.random.randn(512, 62) # TODO random coding here
+            
         pitch = np.load(pitch_path)
         energy_path = os.path.join(
             self.preprocessed_path,
@@ -149,9 +150,7 @@ class Dataset(Dataset):
         output = list()
         for idx in idx_arr:
             output.append(self.reprocess(data, idx))
-
         return output
-
 
 class TextDataset(Dataset):
     def __init__(self, filepath, preprocess_config):

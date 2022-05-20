@@ -31,12 +31,28 @@ class FramePriorNet(torch.nn.Module):
       )]
     self.proj = torch.nn.Conv1d(hidden_channel, out_channels * 2, 1)
     self.out_channels = out_channels
-  
+    self.smooth_length = 31
+    self.pooling = torch.nn.AvgPool1d(kernel_size=self.smooth_length, stride=self.smooth_length, padding=0)
+
+  def smooth(self, x):
+    # x: [bs, 64, 496]
+    bs, mel_bin, mel_len = x.size()
+    
+    assert mel_len % self.smooth_length == 0, "%s %s" % (mel_len, self.smooth_length)
+    
+    x = self.pooling(x)
+    x = x.unsqueeze(-1)
+    x = x.expand(bs, mel_bin, mel_len // self.smooth_length, self.smooth_length)
+    x = x.reshape(bs, mel_bin, mel_len)
+    return x
+    
   def forward(self, x, x_mask):
     # x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
     for f in self.conv:
       x = f(x)
       x = x * x_mask
+    # x = self.smooth(x)
+    # import ipdb; ipdb.set_trace()
     stats = self.proj(x) * x_mask # todo
     m, logs = torch.split(stats, self.out_channels, dim=1)
     return x, m, logs
@@ -113,7 +129,11 @@ class FastSpeech2(nn.Module):
     def __init__(self, preprocess_config, model_config):
         super(FastSpeech2, self).__init__()
         self.model_config = model_config
-        n_src_vocab = 50 + 1 # TODO hard code here on symbol numbers
+        if(preprocess_config['dataset'] == 'us8k'):
+          n_src_vocab = 10 + 1 # TODO hard code here on symbol numbers
+        elif(preprocess_config['dataset'] == 'esc50'):
+          n_src_vocab = 50 + 1 
+          
         d_word_vec = model_config["transformer"]["encoder_hidden"]
         
         self.src_word_emb = nn.Embedding(
@@ -142,14 +162,10 @@ class FastSpeech2(nn.Module):
                 ),
                 "r",
             ) as f:
-                n_speaker = len(json.load(f))
+                n_speaker = len(json.load(f)) + 1 # Add silence tokens
             self.speaker_emb = nn.Embedding(
                 n_speaker,
                 model_config["transformer"]["encoder_hidden"],
-            )
-            self.diff_speaker_embedding = nn.Embedding(
-                n_speaker,
-                preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
             )
         # self.proj= nn.Linear(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"] * 2, 1)
         
@@ -164,7 +180,7 @@ class FastSpeech2(nn.Module):
         # texts: [4, 62, 512]
         bs, t_len, mel_dim = logmels.size()
         tokens = speakers.unsqueeze(1).expand(speakers.size(0), t_len)
-        valid_tokens = tokens * self.build_frame_energy_mask(logmels)
+        valid_tokens = tokens # * self.build_frame_energy_mask(logmels)
         # valid_tokens = nn.MaxPool1d(8, stride=8)(valid_tokens.float()).int()
         return valid_tokens
     
@@ -191,11 +207,11 @@ class FastSpeech2(nn.Module):
             else None
         )
         
-        tokens = self.build_input_tokens(speakers, mels)
-            
-        tokens_emb = self.src_word_emb(tokens) 
+        tokens = self.build_input_tokens(speakers, mels)    
+        tokens_emb = self.src_word_emb(tokens) * (~mel_masks.unsqueeze(-1))
         
         output,_ = self.latent_lstm(tokens_emb)
+        output = output * (~mel_masks.unsqueeze(-1))
         
         (
             output,
@@ -218,6 +234,8 @@ class FastSpeech2(nn.Module):
             d_control,
         )
         
+        output = output * (~mel_masks.unsqueeze(-1))
+        
         if self.speaker_emb is not None:
             g = self.speaker_emb(speakers)
             output = output + g.unsqueeze(1).expand(
@@ -225,9 +243,11 @@ class FastSpeech2(nn.Module):
             )
         else: 
             g=None
-        
-        output = self.encoder(output, mel_masks)
-        output = self.mel_linear(output)
+            
+        output = output * (~mel_masks.unsqueeze(-1))
+        # import ipdb; ipdb.set_trace()
+        # output = self.encoder(output, mel_masks)
+        output = self.mel_linear(output) * (~mel_masks.unsqueeze(-1))
         output, m, logs = self.frame_prior_net(output.permute(0,2,1), ~mel_masks.unsqueeze(1))
         
         if(gen):

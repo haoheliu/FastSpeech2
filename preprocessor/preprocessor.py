@@ -64,14 +64,19 @@ class Preprocessor:
         # Compute pitch, energy, duration, and mel-spectrogram
         speakers = {}
         for i, speaker in enumerate(tqdm(os.listdir(self.in_dir))):
-            speakers[speaker] = i
+            speakers[speaker] = i+1
             for wav_name in os.listdir(os.path.join(self.in_dir, speaker)):
                 if ".wav" not in wav_name:
                     continue
 
                 basename = wav_name.split(".")[0]
                 
-                ret = self.process_utterance(speaker, basename)
+                try:
+                    ret = self.process_utterance(speaker, basename)
+                except:
+                    print("Error in:" , speaker, basename)
+                    continue
+                
                 if ret is None:
                     continue
                 else:

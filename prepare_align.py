@@ -2,7 +2,7 @@ import argparse
 
 import yaml
 
-from preprocessor import ljspeech, aishell3, libritts, esc50
+from preprocessor import ljspeech, aishell3, libritts, esc50, us8k
 
 
 def main(config):
@@ -14,7 +14,9 @@ def main(config):
         libritts.prepare_align(config)
     if "esc50" in config["dataset"]:
         esc50.prepare_align(config)
-
+    if "us8k" in config["dataset"]:
+        us8k.prepare_align(config)
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str, help="path to preprocess.yaml")
