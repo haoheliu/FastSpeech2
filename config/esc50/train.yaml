@@ -26,4 +26,4 @@ step:
   log_step: 20
   synth_step: 1000
   val_step: 4000
-  save_step: 200
+  save_step: 20000

@@ -104,7 +104,7 @@ def main(args, configs):
                     disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
                     r_losses = torch.sum(torch.tensor(r_losses))
                     g_losses = torch.sum(torch.tensor(g_losses))
-                    d_loss = 5 * disc_loss / grad_acc_step # 100 *
+                    d_loss = 5 * disc_loss / grad_acc_step # 100 * 1
                     d_loss.backward()
                     if step % grad_acc_step == 0:
                         nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)

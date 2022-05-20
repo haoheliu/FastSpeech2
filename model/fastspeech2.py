@@ -233,11 +233,10 @@ class FastSpeech2(nn.Module):
         if(gen):
           z = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
           mel_pred, logdet = self.decoder(z, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
-          postnet_output = mel_pred
+          postnet_output = mel_pred.permute(0,2,1)
           
         else:
           z, logdet = self.decoder(mels.permute(0,2,1), ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=False)
-          
           postnet_output = mels
           # z_rand = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
           # mel_pred, _ = self.decoder(z_rand, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
