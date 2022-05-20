@@ -137,7 +137,10 @@ class WaveNet(nn.Module):
         else: 
             g=None
             
-        tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet    
+        tokens_emb = self.src_word_emb(tokens) # TODO We havn't applied mask yet  
+        
+        tokens_emb = torch.randn_like(tokens_emb)
+          
         output = self.wn(tokens_emb.permute(0,2,1), ~mel_masks, g=g) 
     
         # if(g is not None):

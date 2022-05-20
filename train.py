@@ -16,11 +16,20 @@ from evaluate import evaluate
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def get_restore_step(path):
+    checkpoints = os.listdir(path)
+    steps = [int(x.split(".")[0]) for x in checkpoints]
+    return max(steps)
+
 def main(args, configs):
     print("Prepare training ...")
 
     preprocess_config, model_config, train_config = configs
 
+    ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
+    if(os.path.exists(ckpt_path) and len(os.listdir(ckpt_path)) > 0):
+        args.restore_step = get_restore_step(ckpt_path)
+        
     # Get dataset
     dataset = Dataset(
         "train.txt", preprocess_config, train_config, sort=True, drop_last=True

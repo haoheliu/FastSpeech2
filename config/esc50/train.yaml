@@ -15,9 +15,9 @@ path:
   # log_path: "./output/log/exp5_16k_with_vocoder_label_only"
   # result_path: "./output/result/exp5_16k_with_vocoder_label_only"
 
-  ckpt_path: "./output/ckpt/exp7_16k_wavenet"
-  log_path: "./output/log/exp7_16k_wavenet"
-  result_path: "./output/result/exp7_16k_wavenet"
+  ckpt_path: "./output/ckpt/exp7_16k_wavenet_noise_input"
+  log_path: "./output/log/exp7_16k_wavenet_noise_input"
+  result_path: "./output/result/exp7_16k_wavenet_noise_input"
 
 optimizer:
   batch_size: 4
