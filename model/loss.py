@@ -108,8 +108,8 @@ class FastSpeech2Loss(nn.Module):
         # mel_targets = mel_targets.masked_select(mel_masks.unsqueeze(-1))
         # import ipdb; ipdb.set_trace()
         
-        mel_loss = 45 * self.mae_loss(mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
-        postnet_mel_loss = 45 * self.mae_loss(postnet_mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
+        mel_loss = self.mae_loss(mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
+        postnet_mel_loss = self.mae_loss(postnet_mel_predictions.masked_select(mel_masks.unsqueeze(-1)), mel_targets.masked_select(mel_masks.unsqueeze(-1)))
         # postnet_mel_loss = torch.tensor([0.0]).cuda()
         
         pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
