@@ -7,9 +7,13 @@ path:
   # log_path: "./output/log/exp4_16k_with_vocoder"
   # result_path: "./output/result/exp4_16k_with_vocoder"
 
-  ckpt_path: "./output/ckpt/us8k_exp1_glow"
-  log_path: "./output/log/us8k_exp1_glow"
-  result_path: "./output/result/us8k_exp1_glow"
+  # ckpt_path: "./output/ckpt/us8k_exp1_glow"
+  # log_path: "./output/log/us8k_exp1_glow"
+  # result_path: "./output/result/us8k_exp1_glow"
+
+  ckpt_path: "./output/ckpt/us8k_exp2_glow_mel_loss"
+  log_path: "./output/log/us8k_exp2_glow_mel_loss"
+  result_path: "./output/result/us8k_exp2_glow_mel_loss"
 
 optimizer:
   batch_size: 16

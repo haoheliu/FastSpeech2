@@ -35,7 +35,7 @@ def main(args, configs):
 
     preprocess_config, model_config, train_config = configs
     ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
-    if(os.path.exists(ckpt_path)):
+    if(os.path.exists(ckpt_path) and len(os.listdir(ckpt_path)) > 0):
         args.restore_step = get_restore_step(ckpt_path)
         
     # Get dataset

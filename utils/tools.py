@@ -120,6 +120,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     mel_len = predictions[9][index].item()
     mel_target = targets[6][index, :mel_len].detach().transpose(0, 1)
 
+    mel_prediction = predictions[0][index, :mel_len].detach().transpose(0, 1)
     postnet_mel_prediction = predictions[1][index, :mel_len].detach().transpose(0, 1)
         
     duration = targets[11][index, :src_len].detach().cpu().numpy()
@@ -142,11 +143,12 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
 
     fig = plot_mel(
         [
+            (mel_prediction.cpu().numpy(), pitch, energy),
             (postnet_mel_prediction.cpu().numpy(), pitch, energy),
             (mel_target.cpu().numpy(), pitch, energy),
         ],
         stats,
-        ["Postnet mel prediction", "Ground-Truth Spectrogram"],
+        ["Raw mel spectrogram prediction", "Postnet mel prediction", "Ground-Truth Spectrogram"],
     )
 
     if vocoder is not None:
