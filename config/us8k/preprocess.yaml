@@ -4,7 +4,7 @@ path:
   corpus_path: "/vol/research/dcase2022/datasets/urbansound8k/UrbanSound8K/categorized"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
   raw_path: "./raw_data/us8k"
-  preprocessed_path: "./preprocessed_data/us8k"
+  preprocessed_path: "./preprocessed_data/us8k_crepe"
 
 preprocessing:
   val_size: 32

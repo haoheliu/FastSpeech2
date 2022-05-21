@@ -8,6 +8,8 @@ import pyworld as pw
 from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
+import torch
+import torchcrepe
 
 import audio as Audio
 
@@ -64,11 +66,12 @@ class Preprocessor:
         # Compute pitch, energy, duration, and mel-spectrogram
         speakers = {}
         for i, speaker in enumerate(tqdm(os.listdir(self.in_dir))):
+        # for i, speaker in enumerate(os.listdir(self.in_dir)):
             speakers[speaker] = i+1
             for wav_name in os.listdir(os.path.join(self.in_dir, speaker)):
                 if ".wav" not in wav_name:
                     continue
-
+                print(wav_name)
                 basename = wav_name.split(".")[0]
                 
                 try:
@@ -183,16 +186,38 @@ class Preprocessor:
         wav = wav[
             int(self.sampling_rate * start) : int(self.sampling_rate * end)
         ].astype(np.float32)
-
-        # Compute fundamental frequency
-        pitch, t = pw.dio(
-            wav.astype(np.float64),
-            self.sampling_rate,
-            frame_period=self.hop_length / self.sampling_rate * 1000,
-        )
         
-        pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
+        #############################################################################
+        wav = torch.FloatTensor(wav[None,...]).cuda()
+        hop_length = int(sr / 100)
 
+        fmin = 20
+        fmax = 1100
+        model = 'full'
+        device = 'cuda'
+        # Pick a batch size that doesn't cause memory errors on your gpu
+        batch_size = 16
+        # Compute pitch using first gpu
+        pitch = torchcrepe.predict(wav, # [1, 64000] tensor
+                                sr,
+                                hop_length,
+                                fmin,
+                                fmax,
+                                model,
+                                batch_size=batch_size,
+                                device=device)
+        pitch = pitch[0,...].detach().cpu().numpy()
+        wav = wav[0,...].detach().cpu().numpy()
+        #############################################################################
+        # # Compute fundamental frequency
+        # pitch, t = pw.dio(
+        #     wav.astype(np.float64),
+        #     self.sampling_rate,
+        #     frame_period=self.hop_length / self.sampling_rate * 1000,
+        # )
+        
+        # pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
+        #############################################################################
         pitch = pitch[: sum(duration)]
         if np.sum(pitch != 0) <= 1:
             return None

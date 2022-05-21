@@ -6,14 +6,14 @@ from audio.audio_processing import griffin_lim
 
 
 def get_mel_from_wav(audio, _stft):
+    # import ipdb; ipdb.set_trace()
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
+    # audio = torch.clip(audio.unsqueeze(0), -1, 1)
     audio = torch.autograd.Variable(audio, requires_grad=False)
     melspec, energy = _stft.mel_spectrogram(audio)
     melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
     energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
-
     return melspec, energy
-
 
 def inv_mel_spec(mel, out_filename, _stft, griffin_iters=60):
     mel = torch.stack([mel])
