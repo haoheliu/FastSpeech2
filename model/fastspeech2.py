@@ -195,6 +195,13 @@ class FastSpeech2(nn.Module):
                 n_speaker,
                 model_config["transformer"]["encoder_hidden"],
             )
+        
+        self.diff = DiffusionDecoder(unet_in_channels=3)
+        self.diff_speaker_embedding = nn.Embedding(
+                n_speaker,
+                preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
+            )
+        
         # self.proj= nn.Linear(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"] * 2, 1)
         
     def build_frame_energy_mask(self, logmels):
@@ -274,6 +281,10 @@ class FastSpeech2(nn.Module):
             output = output + g.unsqueeze(1).expand(
                 -1, max_mel_len, -1
             )
+            g_diff = self.diff_speaker_embedding(speakers)
+            g_diff = g_diff.unsqueeze(1).expand(
+                g_diff.size(0), max_mel_len, g_diff.size(1)
+            )
         else: 
             g=None
 
@@ -283,6 +294,15 @@ class FastSpeech2(nn.Module):
         postnet_output = self.postnet(mel_pred) + mel_pred
         log_d_predictions,d_rounded = None, None
         
+        if(not gen):
+            diff_output = None
+            diff_loss = self.diff(postnet_output, mels, g=g_diff, gen=False).mean() # TODO detach here
+            
+        else:
+            diff_output = self.diff(postnet_output, mels, g=g_diff, gen=True) # TODO detach here
+            postnet_output = diff_output
+            diff_loss = None
+
         return (
             mel_pred,
             postnet_output,
@@ -294,4 +314,71 @@ class FastSpeech2(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-        ), (None, None, None, None,mel_masks)
+        ), (None, None, None, None, mel_masks, diff_loss, diff_output)
+        
+        
+class DiffusionDecoder(nn.Module):
+  def __init__(self, 
+      n_speaker = 50,
+      unet_channels=64,
+      unet_in_channels=2,
+      unet_out_channels=1,
+      dim_mults=(1, 2, 4),
+      groups=8,
+      with_time_emb=True,
+      beta_0=0.05,
+      beta_1=20,
+      N=1000,
+      T=1):
+
+    super().__init__()
+
+    self.beta_0 = beta_0
+    self.beta_1 = beta_1
+    self.N = N
+    self.T = T
+    self.delta_t = T*1.0 / N
+    self.discrete_betas = torch.linspace(beta_0, beta_1, N)
+    self.unet = unet.Unet(dim=unet_channels, out_dim=unet_out_channels, dim_mults=dim_mults, groups=groups, channels=unet_in_channels, with_time_emb=with_time_emb)
+    # self.linear = torch.nn.Linear(512, 64)
+
+  def marginal_prob(self, mu, x, t):
+    log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+    mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu
+    std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
+    return mean, std
+
+  def cal_loss(self, x, mu, t, z, std, g=None):
+    time_steps = t * (self.N - 1)
+    if g is not None:
+        x = torch.stack([x, mu, g], 1)
+    else:
+        x = torch.stack([x, mu], 1)
+    
+    grad = self.unet(x, time_steps)
+    loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
+    return loss
+
+  def forward(self, mu, y=None, g=None, gen=False):
+    if not gen:
+      t = torch.FloatTensor(y.shape[0]).uniform_(0, self.T-self.delta_t).to(y.device)+self.delta_t  # sample a random t
+      mean, std = self.marginal_prob(mu, y, t)
+      z = torch.randn_like(y)
+      x = mean + std[:, None, None] * z
+      loss = self.cal_loss(x, mu, t, z, std, g)
+      return loss
+    else:
+      with torch.no_grad():
+        y_T = torch.randn_like(mu) + mu
+        y_t_plus_one = y_T
+        y_t = None
+        for n in tqdm(range(self.N - 1, 0, -1)):
+          t = torch.FloatTensor(1).fill_(n).to(mu.device)
+          if g is not None:
+              x = torch.stack([y_t_plus_one, mu, g], 1)
+          else:
+              x = torch.stack([y_t_plus_one, mu], 1)
+          grad = self.unet(x, t)
+          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
+          y_t_plus_one = y_t
+      return y_t

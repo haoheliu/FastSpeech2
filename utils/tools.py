@@ -81,7 +81,7 @@ def log(
             logger.add_scalar("Loss/r_loss", losses[8], step)
             logger.add_scalar("Loss/g_loss", losses[9], step)
             logger.add_scalar("Loss/gen_loss", losses[10], step)
-            logger.add_scalar("Loss/mle_loss", losses[11], step)
+            logger.add_scalar("Loss/diff_loss", losses[11], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
