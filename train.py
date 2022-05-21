@@ -99,7 +99,9 @@ def main(args, configs):
 
                 # Cal Loss
                 losses, (mel_predictions, mel_targets) = Loss(batch, output)
-                mle_loss = mle_lossfunc(z,m,logs,logdet,~mel_masks.unsqueeze(1))
+                
+                # mle_loss = mle_lossfunc(z,m,logs,logdet,~mel_masks.unsqueeze(1))
+                mle_loss = torch.tensor([0.0]).cuda()
                 
                 disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
                 r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
@@ -128,7 +130,7 @@ def main(args, configs):
                 else:
                     total_loss = losses[0]
                 
-                total_loss = total_loss + mle_loss
+                total_loss = total_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 

@@ -17,6 +17,38 @@ import model.glow.commons as commons
 import model.glow.modules as modules
 import model.glow.attentions as attentions
 
+import model.wavenet.modules as modules_wavenet
+import model.wavenet.commons as commons_wavenet
+
+class WaveNetEncoder(nn.Module):
+  def __init__(self,
+      in_channels,
+      out_channels,
+      hidden_channels,
+      kernel_size,
+      dilation_rate,
+      n_layers,
+      gin_channels=0):
+    super().__init__()
+    self.in_channels = in_channels
+    self.out_channels = out_channels
+    self.hidden_channels = hidden_channels
+    self.kernel_size = kernel_size
+    self.dilation_rate = dilation_rate
+    self.n_layers = n_layers
+    self.gin_channels = gin_channels
+
+    self.pre = nn.Conv1d(in_channels, hidden_channels, 1)
+    self.enc = modules_wavenet.WN(hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels=gin_channels)
+    self.proj = nn.Conv1d(hidden_channels, out_channels, 1)
+
+  def forward(self, x, x_mask, g=None):
+    # x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
+    x = self.pre(x) * x_mask.unsqueeze(1)
+    x = self.enc(x, x_mask.unsqueeze(1), g=g[..., None])
+    stats = self.proj(x) * x_mask.unsqueeze(1)
+    return stats.permute(0,2,1)
+  
 class FramePriorNet(torch.nn.Module):
   def __init__(self, in_channel, hidden_channel, out_channels, kernel_size=5, n_layers=4) -> None:
     super().__init__()
@@ -139,19 +171,15 @@ class FastSpeech2(nn.Module):
         self.src_word_emb = nn.Embedding(
             n_src_vocab, d_word_vec, padding_idx=Constants.PAD
         )
-                
         self.encoder = Encoder(model_config)
         self.latent_lstm = nn.LSTM(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"], num_layers=1, batch_first=True)
         self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
-        
-        hidden_dim=preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
+        self.wn = WaveNetEncoder(in_channels=192, out_channels=192, hidden_channels=192, kernel_size=5, dilation_rate=1, n_layers=16, gin_channels=192)
+                
         self.mel_linear = nn.Linear(
             model_config["transformer"]["decoder_hidden"],
             preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
         )
-        self.frame_prior_net = FramePriorNet(hidden_dim, hidden_dim, hidden_dim)
-        self.decoder_flow = FlowSpecDecoder(hidden_dim, hidden_dim, kernel_size=5, dilation_rate=5, n_blocks=12, n_layers=4, p_dropout=0.0, n_split=4, n_sqz=1, sigmoid_scale=False, gin_channels=192)
-        # self.decoder = Decoder(model_config)
         self.postnet = PostNet(n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
 
         self.speaker_emb = None
@@ -220,14 +248,6 @@ class FastSpeech2(nn.Module):
         output = self.encoder(output, mel_masks)
         output = output * (~mel_masks.unsqueeze(-1))
         
-        if self.speaker_emb is not None:
-            g = self.speaker_emb(speakers)
-            output = output + g.unsqueeze(1).expand(
-                -1, max_mel_len, -1
-            )
-        else: 
-            g=None
-            
         (
             output,
             p_predictions,
@@ -248,21 +268,20 @@ class FastSpeech2(nn.Module):
             e_control,
             d_control,
         )
-        output = output * (~mel_masks.unsqueeze(-1))
-        output = self.mel_linear(output) * (~mel_masks.unsqueeze(-1))
-        output, m, logs = self.frame_prior_net(output.permute(0,2,1), ~mel_masks.unsqueeze(1))
         
-        if(gen):
-          z = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
-          mel_pred, logdet = self.decoder_flow(z, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
-          
-        else:
-          z, logdet = self.decoder_flow(mels.permute(0,2,1), ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=False)
-          z_rand = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
-          mel_pred, _ = self.decoder_flow(z_rand, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
+        if self.speaker_emb is not None:
+            g = self.speaker_emb(speakers)
+            output = output + g.unsqueeze(1).expand(
+                -1, max_mel_len, -1
+            )
+        else: 
+            g=None
+
+        output = self.wn(output.permute(0,2,1), ~mel_masks, g=g) 
+        mel_pred = self.mel_linear(output)
         
-        mel_pred = mel_pred.permute(0,2,1)
         postnet_output = self.postnet(mel_pred) + mel_pred
+        log_d_predictions,d_rounded = None, None
         
         return (
             mel_pred,
@@ -275,4 +294,4 @@ class FastSpeech2(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-        ), (z,m,logs,logdet,mel_masks)
+        ), (None, None, None, None,mel_masks)

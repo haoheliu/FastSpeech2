@@ -117,7 +117,7 @@ class FastSpeech2Loss(nn.Module):
         # duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         total_loss = (
-            energy_loss + pitch_loss + mel_loss + postnet_mel_loss
+            mel_loss + postnet_mel_loss + pitch_loss + energy_loss
         )
         
         duration_loss = torch.tensor([0.0]).cuda()

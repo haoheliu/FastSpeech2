@@ -26,7 +26,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
     loader = DataLoader(
         dataset,
         batch_size=8,
-        shuffle=False,
+        shuffle=True,
         collate_fn=dataset.collate_fn,
     )
 

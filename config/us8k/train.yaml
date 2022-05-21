@@ -11,9 +11,9 @@ path:
   # log_path: "./output/log/us8k_exp1_glow"
   # result_path: "./output/result/us8k_exp1_glow"
 
-  ckpt_path: "./output/ckpt/us8k_exp3_reverse_glow"
-  log_path: "./output/log/us8k_exp3_reverse_glow"
-  result_path: "./output/result/us8k_exp3_reverse_glow"
+  ckpt_path: "./output/ckpt/us8k_exp4_wavenet"
+  log_path: "./output/us8k_exp4_wavenet"
+  result_path: "./output/result/us8k_exp4_wavenet"
 
 optimizer:
   batch_size: 16
@@ -28,6 +28,6 @@ optimizer:
 step:
   total_step: 900000
   log_step: 20
-  synth_step: 500
-  val_step: 1000
-  save_step: 5000
+  synth_step: 1000
+  val_step: 2000
+  save_step: 20000
