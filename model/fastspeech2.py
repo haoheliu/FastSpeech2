@@ -151,7 +151,7 @@ class FastSpeech2(nn.Module):
         )
         self.frame_prior_net = FramePriorNet(hidden_dim, hidden_dim, hidden_dim)
         self.decoder_flow = FlowSpecDecoder(hidden_dim, hidden_dim, kernel_size=5, dilation_rate=5, n_blocks=12, n_layers=4, p_dropout=0.0, n_split=4, n_sqz=1, sigmoid_scale=False, gin_channels=192)
-        self.decoder = Decoder(model_config)
+        # self.decoder = Decoder(model_config)
         self.postnet = PostNet(n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
 
         self.speaker_emb = None
@@ -249,28 +249,23 @@ class FastSpeech2(nn.Module):
             d_control,
         )
         output = output * (~mel_masks.unsqueeze(-1))
-        
-        output, mel_masks = self.decoder(output, mel_masks)
-        decoder_mel_pred = self.mel_linear(output) * (~mel_masks.unsqueeze(-1))
-        
-        output, m, logs = self.frame_prior_net(decoder_mel_pred.permute(0,2,1), ~mel_masks.unsqueeze(1))
+        output = self.mel_linear(output) * (~mel_masks.unsqueeze(-1))
+        output, m, logs = self.frame_prior_net(output.permute(0,2,1), ~mel_masks.unsqueeze(1))
         
         if(gen):
           z = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
           mel_pred, logdet = self.decoder_flow(z, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
-          postnet_output = mel_pred.permute(0,2,1)
           
         else:
           z, logdet = self.decoder_flow(mels.permute(0,2,1), ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=False)
-          postnet_output = mels
-          # z_rand = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
-          # mel_pred, _ = self.decoder(z_rand, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
-          
-        # mel_pred = mel_pred.permute(0,2,1)
-        # postnet_output = self.postnet(mel_pred) + mel_pred
+          z_rand = (m + torch.exp(logs) * torch.randn_like(m)) * (~mel_masks.unsqueeze(1))
+          mel_pred, _ = self.decoder_flow(z_rand, ~mel_masks.unsqueeze(1), g=g.unsqueeze(-1), reverse=True)
+        
+        mel_pred = mel_pred.permute(0,2,1)
+        postnet_output = self.postnet(mel_pred) + mel_pred
         
         return (
-            decoder_mel_pred,
+            mel_pred,
             postnet_output,
             p_predictions,
             e_predictions,
