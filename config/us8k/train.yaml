@@ -11,9 +11,9 @@ path:
   # log_path: "./output/log/us8k_exp1_glow"
   # result_path: "./output/result/us8k_exp1_glow"
 
-  ckpt_path: "./output/ckpt/us8k_exp4_wavenet_local"
-  log_path: "./output/log/us8k_exp4_wavenet_local"
-  result_path: "./output/result/us8k_exp4_wavenet_local"
+  ckpt_path: "./output/ckpt/us8k_exp4.3_wavenet_gan"
+  log_path: "./output/log/us8k_exp4.3_wavenet_gan"
+  result_path: "./output/result/us8k_exp4.3_wavenet_gan"
 
 optimizer:
   batch_size: 16

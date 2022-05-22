@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-
+import numpy as np
 from utils.model import get_model, get_vocoder, get_param_num, get_discriminator
 from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
@@ -107,9 +107,14 @@ def main(args, configs):
                 r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
                 gen_loss = torch.tensor([0.0])
                 
-                if(step >2000000):
-                    disc_real_outputs, _ = disc(mel_targets)
-                    disc_generated_outputs, _ = disc(mel_predictions.detach())
+                disc_length = 36
+                min_len = int(torch.min(batch[7])) # minimum mel spec length
+                rand_start = int(np.random.uniform(low=0, high=max(min_len-disc_length, 0)))
+                rand_end = rand_start + disc_length
+                
+                if(step >1000):
+                    disc_real_outputs, _ = disc(mel_targets[:,rand_start:rand_end,:])
+                    disc_generated_outputs, _ = disc(mel_predictions[:,rand_start:rand_end,:].detach())
                     disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
                     r_losses = torch.sum(torch.tensor(r_losses))
                     g_losses = torch.sum(torch.tensor(g_losses))
@@ -120,10 +125,10 @@ def main(args, configs):
                         opt_d.step_and_update_lr()
                         opt_d.zero_grad()
                 
-                if(step > 6000000):
+                if(step > 3000):
                     # Backward
-                    disc_real_outputs, fmap_real = disc(mel_targets)
-                    disc_generated_outputs, fmap_generated = disc(mel_predictions)
+                    disc_real_outputs, fmap_real = disc(mel_targets[:,rand_start:rand_end,:])
+                    disc_generated_outputs, fmap_generated = disc(mel_predictions[:,rand_start:rand_end,:])
                     fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
                     gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
                     total_loss = losses[0] + fmap_loss + gen_loss

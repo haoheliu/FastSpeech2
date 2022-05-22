@@ -11,7 +11,7 @@ arguments = $ENV(PWD)/submit.sh
 log    = condor_log/c$(cluster).p$(process).log
 output = condor_log/c$(cluster).p$(process).out
 error  = condor_log/c$(cluster).p$(process).error
-JobBatchName = "us8k_exp4_wavenet_weka"
+JobBatchName = "us8k_exp4.3_wavenet_gan"
 
 # -----------------------------------
 # File Transfer, Input, Output
