@@ -231,43 +231,59 @@ class FastSpeech2(nn.Module):
         d_control=1.0,
         gen=False
     ):
-        mel_masks = (
-            get_mask_from_lengths(mel_lens, max_mel_len)
-            if mel_lens is not None
-            else None
-        )
+      
+        # TODO here i assume the src length has the same length as mel spec during inference
+        if(mel_lens is None):
+          mel_masks = (
+              get_mask_from_lengths(src_lens, max_src_len)
+              if src_lens is not None
+              else None
+          ) 
+          max_mel_len = max_src_len
+          mel_lens = src_lens
+        else:
+          mel_masks = (
+              get_mask_from_lengths(mel_lens, max_mel_len)
+              if mel_lens is not None
+              else None
+          ) 
         
-        tokens = self.build_input_tokens(speakers, mels)
-        tokens = tokens * (~mel_masks)
+        if(mels is not None):
+          tokens = self.build_input_tokens(speakers, mels)
+          tokens = tokens * (~mel_masks)
+        else:
+          tokens = texts
             
-        tokens_emb = self.src_word_emb(tokens) * (~mel_masks.unsqueeze(-1))
+        tokens_emb = self.src_word_emb(tokens) * (~mel_masks.unsqueeze(-1))        
         
-        output,_ = self.latent_lstm(tokens_emb)
+        tokens_emb = tokens_emb + torch.randn_like(tokens_emb)
+        
+        # output,_ = self.latent_lstm(tokens_emb)
+        # output = output * (~mel_masks.unsqueeze(-1))
+        
+        output = self.encoder(tokens_emb, mel_masks)
         output = output * (~mel_masks.unsqueeze(-1))
         
-        output = self.encoder(output, mel_masks)
-        output = output * (~mel_masks.unsqueeze(-1))
-        
-        (
-            output,
-            p_predictions,
-            e_predictions,
-            log_d_predictions,
-            d_rounded,
-            _,
-            mel_masks,
-        ) = self.energy_adaptor(
-            output,
-            mel_masks,
-            mel_masks,
-            max_mel_len,
-            p_targets,
-            e_targets,
-            d_targets,
-            p_control,
-            e_control,
-            d_control,
-        )
+        # (
+        #     output,
+        #     p_predictions,
+        #     e_predictions,
+        #     log_d_predictions,
+        #     d_rounded,
+        #     _,
+        #     mel_masks,
+        # ) = self.energy_adaptor(
+        #     output,
+        #     mel_masks,
+        #     mel_masks,
+        #     max_mel_len,
+        #     p_targets,
+        #     e_targets,
+        #     d_targets,
+        #     p_control,
+        #     e_control,
+        #     d_control,
+        # )
         
         if self.speaker_emb is not None:
             g = self.speaker_emb(speakers)
@@ -282,6 +298,9 @@ class FastSpeech2(nn.Module):
         
         postnet_output = self.postnet(mel_pred) + mel_pred
         log_d_predictions,d_rounded = None, None
+        
+        p_predictions = None
+        e_predictions = None
         
         return (
             mel_pred,

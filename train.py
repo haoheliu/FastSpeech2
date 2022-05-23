@@ -107,14 +107,14 @@ def main(args, configs):
                 r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
                 gen_loss = torch.tensor([0.0])
                 
-                disc_length = 36
-                min_len = int(torch.min(batch[7])) # minimum mel spec length
-                rand_start = int(np.random.uniform(low=0, high=max(min_len-disc_length, 0)))
-                rand_end = rand_start + disc_length
+                # disc_length = 72
+                # min_len = int(torch.min(batch[7])) # minimum mel spec length
+                # rand_start = int(np.random.uniform(low=0, high=max(min_len-disc_length, 0)))
+                # rand_end = rand_start + disc_length
                 
-                if(step >1000):
-                    disc_real_outputs, _ = disc(mel_targets[:,rand_start:rand_end,:])
-                    disc_generated_outputs, _ = disc(mel_predictions[:,rand_start:rand_end,:].detach())
+                if(step > 0):
+                    disc_real_outputs, _ = disc(mel_targets) # [:,rand_start:rand_end,:]
+                    disc_generated_outputs, _ = disc(mel_predictions.detach())
                     disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
                     r_losses = torch.sum(torch.tensor(r_losses))
                     g_losses = torch.sum(torch.tensor(g_losses))
@@ -125,15 +125,13 @@ def main(args, configs):
                         opt_d.step_and_update_lr()
                         opt_d.zero_grad()
                 
-                if(step > 3000):
-                    # Backward
-                    disc_real_outputs, fmap_real = disc(mel_targets[:,rand_start:rand_end,:])
-                    disc_generated_outputs, fmap_generated = disc(mel_predictions[:,rand_start:rand_end,:])
-                    fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
-                    gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
-                    total_loss = losses[0] + fmap_loss + gen_loss
-                else:
-                    total_loss = losses[0]
+                
+                # Backward
+                disc_real_outputs, fmap_real = disc(mel_targets)
+                disc_generated_outputs, fmap_generated = disc(mel_predictions)
+                fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
+                gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
+                total_loss = fmap_loss + gen_loss
                 
                 total_loss = total_loss
                 total_loss = total_loss / grad_acc_step
