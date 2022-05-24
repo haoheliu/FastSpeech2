@@ -1,7 +1,7 @@
 path:
-  ckpt_path: "./output/ckpt/test"
-  log_path: "./output/log/test"
-  result_path: "./output/result/test"
+  # ckpt_path: "./output/ckpt/test"
+  # log_path: "./output/log/test"
+  # result_path: "./output/result/test"
 
   # ckpt_path: "./output/ckpt/exp4_16k_with_vocoder"
   # log_path: "./output/log/exp4_16k_with_vocoder"

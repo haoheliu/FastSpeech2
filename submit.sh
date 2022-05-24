@@ -15,8 +15,8 @@ conda activate fs2_weka
 
 ######################## ENVIRONMENT ########################
 which python
-rsync -r /vol/research/ai4sound/project/audio_generation/FastSpeech2 /mnt/fast/nobackup/users/hl01486/projects/audio_generation
-cd /mnt/fast/nobackup/users/hl01486/projects/audio_generation/FastSpeech2
+rsync -r /vol/research/ai4sound/project/audio_generation/FastSpeech2 /mnt/fast/nobackup/users/hl01486/projects/audio_generation_diff
+cd /mnt/fast/nobackup/users/hl01486/projects/audio_generation_diff/FastSpeech2
 
 ######################## SETUP ########################
 EXP_NAME="fs2_esc50_16k_gen"

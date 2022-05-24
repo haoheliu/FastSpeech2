@@ -11,9 +11,9 @@ path:
   # log_path: "./output/log/us8k_exp1_glow"
   # result_path: "./output/result/us8k_exp1_glow"
 
-  ckpt_path: "./output/ckpt/us8k_ddpm_sr_full_condition"
-  log_path: "./output/log/us8k_ddpm_sr_full_condition"
-  result_path: "./output/result/us8k_ddpm_sr_full_condition"
+  ckpt_path: "./output/ckpt/us8k_exp6_diff"
+  log_path: "./output/log/us8k_exp6_diff"
+  result_path: "./output/result/us8k_exp6_diff"
 
 optimizer:
   batch_size: 8

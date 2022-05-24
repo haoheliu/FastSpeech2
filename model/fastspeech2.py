@@ -167,21 +167,7 @@ class FastSpeech2(nn.Module):
           n_src_vocab = 50 + 1 
           
         d_word_vec = model_config["transformer"]["encoder_hidden"]
-        
-        self.src_word_emb = nn.Embedding(
-            n_src_vocab, d_word_vec, padding_idx=Constants.PAD
-        )
-        self.encoder = Encoder(model_config)
-        self.latent_lstm = nn.LSTM(model_config["transformer"]["encoder_hidden"], model_config["transformer"]["encoder_hidden"], num_layers=1, batch_first=True)
-        self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
-        self.wn = WaveNetEncoder(in_channels=192, out_channels=192, hidden_channels=192, kernel_size=5, dilation_rate=1, n_layers=16, gin_channels=192)
-                
-        self.mel_linear = nn.Linear(
-            model_config["transformer"]["decoder_hidden"],
-            preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
-        )
-        self.postnet = PostNet(n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
-
+      
         self.speaker_emb = None
         if model_config["multi_speaker"]:
             with open(
@@ -196,7 +182,7 @@ class FastSpeech2(nn.Module):
                 model_config["transformer"]["encoder_hidden"],
             )
         
-        self.diff = DiffusionDecoder(unet_in_channels=3)
+        self.diff = DiffusionDecoder(unet_in_channels=2)
         self.diff_speaker_embedding = nn.Embedding(
                 n_speaker,
                 preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
@@ -243,8 +229,9 @@ class FastSpeech2(nn.Module):
             else None
         )
         
-        tokens_emb = mels.clone()
-        tokens_emb[...,32:] = tokens_emb[...,32:] * 0 - 6
+        # tokens_emb = mels.clone()
+        # tokens_emb[...,32:] = tokens_emb[...,32:] * 0 - 6
+        tokens_emb = None
         
         if self.speaker_emb is not None:
             g_diff = self.diff_speaker_embedding(speakers)
@@ -316,10 +303,16 @@ class DiffusionDecoder(nn.Module):
 
   def cal_loss(self, x, mu, t, z, std, g=None):
     time_steps = t * (self.N - 1)
-    if g is not None:
-        x = torch.stack([x, mu, g], 1)
+    if(mu is None):
+      if g is not None:
+          x = torch.stack([x, g], 1)
+      else:
+          x = torch.stack([x], 1)
     else:
-        x = torch.stack([x, mu], 1)
+      if g is not None:
+          x = torch.stack([x, mu, g], 1)
+      else:
+          x = torch.stack([x, mu], 1)
     
     grad = self.unet(x, time_steps)
     loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
@@ -341,10 +334,17 @@ class DiffusionDecoder(nn.Module):
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
           t = torch.FloatTensor(1).fill_(n).to(mu.device)
-          if g is not None:
-              x = torch.stack([y_t_plus_one, mu, g], 1)
+          
+          if(mu is None):
+            if g is not None:
+                x = torch.stack([y_t_plus_one, g], 1)
+            else:
+                x = torch.stack([y_t_plus_one], 1)
           else:
-              x = torch.stack([y_t_plus_one, mu], 1)
+            if g is not None:
+                x = torch.stack([y_t_plus_one, mu, g], 1)
+            else:
+                x = torch.stack([y_t_plus_one, mu], 1)
           grad = self.unet(x, t)
           # y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
           y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)

@@ -7,11 +7,11 @@
 # --------------------------------------------
 # Executable and its arguments
 executable    = /bin/sh
-arguments =  /mnt/fast/nobackup/users/hl01486/projects/audio_generation/FastSpeech2/submit.sh
+arguments =  /mnt/fast/nobackup/users/hl01486/projects/audio_generation_diff/FastSpeech2/submit.sh
 log    = condor_log/c$(cluster).p$(process).log
 output = condor_log/c$(cluster).p$(process).out
 error  = condor_log/c$(cluster).p$(process).error
-JobBatchName = "us8k_ddpm_sr_full_condition"
+JobBatchName = "us8k_exp6_diff"
 
 # -----------------------------------
 # File Transfer, Input, Output
