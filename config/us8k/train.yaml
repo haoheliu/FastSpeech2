@@ -11,23 +11,23 @@ path:
   # log_path: "./output/log/us8k_exp1_glow"
   # result_path: "./output/result/us8k_exp1_glow"
 
-  ckpt_path: "./output/ckpt/us8k_exp5_diff_wavenet"
-  log_path: "./output/us8k_exp5_diff_wavenet"
-  result_path: "./output/result/us8k_exp5_diff_wavenet"
+  ckpt_path: "./output/ckpt/us8k_ddpm_sr_full_condition"
+  log_path: "./output/log/us8k_ddpm_sr_full_condition"
+  result_path: "./output/result/us8k_ddpm_sr_full_condition"
 
 optimizer:
-  batch_size: 16
+  batch_size: 8
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
   grad_clip_thresh: 1.0
-  grad_acc_step: 1
+  grad_acc_step: 2
   warm_up_step: 4000
   anneal_steps: [300000, 400000, 500000]
   anneal_rate: 0.3
 step:
   total_step: 900000
-  log_step: 20
-  synth_step: 1000
-  val_step: 4000
-  save_step: 20000
+  log_step: 100
+  synth_step: 5000
+  val_step: 10000
+  save_step: 10000

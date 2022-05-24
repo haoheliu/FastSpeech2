@@ -25,7 +25,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
         dataset,
-        batch_size=8,
+        batch_size=1,
         shuffle=True,
         collate_fn=dataset.collate_fn,
     )
@@ -37,7 +37,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
     loss_sums = [0 for _ in range(6)]
     idx = 0
     for batchs in loader:
-        if(idx > 6): break # Run only one sample
+        if(idx > 2): break # Run only one sample
         for batch in batchs: 
             idx += 1
             batch = to_device(batch, device)
@@ -46,16 +46,16 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
                 output, _ = model(*(batch[2:]), gen=True)
 
                 # Cal Loss
-                losses,_ = Loss(batch, output)
+                # losses,_ = Loss(batch, output)
 
-                for i in range(len(losses)):
-                    loss_sums[i] += losses[i].item() * len(batch[0])
+                # for i in range(len(losses)):
+                #     loss_sums[i] += losses[i].item() * len(batch[0])
 
-    loss_means = [loss_sum / len(dataset) for loss_sum in loss_sums]
+    # loss_means = [loss_sum / len(dataset) for loss_sum in loss_sums]
 
-    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
-        *([step] + [l for l in loss_means])
-    )
+    # message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
+    #     *([step] + [l for l in loss_means])
+    # )
 
     if logger is not None:
         fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
@@ -65,7 +65,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
             model_config,
             preprocess_config,
         )
-        log(logger, step, losses=loss_means)
+        log(logger, step)
         log(
             logger,
             fig=fig,
@@ -85,7 +85,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None):
             tag="Validation/step_{}_{}_synthesized".format(step, tag),
         )
 
-    return message
+    # return message
 
 
 if __name__ == "__main__":

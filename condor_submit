@@ -7,11 +7,11 @@
 # --------------------------------------------
 # Executable and its arguments
 executable    = /bin/sh
-arguments = $ENV(PWD)/submit.sh
+arguments =  /mnt/fast/nobackup/users/hl01486/projects/audio_generation/FastSpeech2/submit.sh
 log    = condor_log/c$(cluster).p$(process).log
 output = condor_log/c$(cluster).p$(process).out
 error  = condor_log/c$(cluster).p$(process).error
-JobBatchName = "us8k_exp4_wavenet"
+JobBatchName = "us8k_ddpm_sr_full_condition"
 
 # -----------------------------------
 # File Transfer, Input, Output
@@ -19,13 +19,13 @@ JobBatchName = "us8k_exp4_wavenet"
 #transfer_input_files = catch_signal_test.py
 #when_to_transfer_output = ON_EXIT
 Environment = PYTHONIOENCODING=UTF-8
-environment = "mount=/vol/research/"
+# environment = "mount=/vol/research/"
 +CanCheckpoint = False
 +JobRunTime = 72
 +GPUMem = 8096
 # -------------------------------------
 # Requirements for the Job
-requirements = (CUDADeviceName == "Quadro RTX 5000") || HasWeka && HasStornext && ((CUDADeviceName == "GeForce RTX 3090")) 
+requirements = (CUDADeviceName == "GeForce GTX TITAN X") || HasWeka && HasStornext && ((CUDADeviceName == "GeForce RTX 3090")) 
 
 # (CUDADeviceName == "Quadro RTX 5000") || ((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")) && (machine == "aisurrey03.surrey.ac.uk")
 

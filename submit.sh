@@ -1,19 +1,22 @@
-# >>> conda initialize >>>
-__conda_setup="$('/vol/research/dcase2022/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+# >>> conda initialize >>> /vol/research/dcase2022/miniconda3
+__conda_setup="$('/mnt/fast/nobackup/users/hl01486/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/vol/research/dcase2022/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/vol/research/dcase2022/miniconda3/etc/profile.d/conda.sh"
+    if [ -f "/mnt/fast/nobackup/users/hl01486/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "/mnt/fast/nobackup/users/hl01486/miniconda3/etc/profile.d/conda.sh"
     else
-        export PATH="/vol/research/dcase2022/miniconda3/bin:$PATH"
+        export PATH="/mnt/fast/nobackup/users/hl01486/miniconda3/bin:$PATH"
     fi
 fi
+
 unset __conda_setup
-conda activate fs2
+conda activate fs2_weka
+
 ######################## ENVIRONMENT ########################
 which python
-cd /vol/research/ai4sound/project/audio_generation/FastSpeech2
+rsync -r /vol/research/ai4sound/project/audio_generation/FastSpeech2 /mnt/fast/nobackup/users/hl01486/projects/audio_generation
+cd /mnt/fast/nobackup/users/hl01486/projects/audio_generation/FastSpeech2
 
 ######################## SETUP ########################
 EXP_NAME="fs2_esc50_16k_gen"

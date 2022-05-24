@@ -208,7 +208,6 @@ class FastSpeech2(nn.Module):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
         cutoff = float(np.random.uniform(0.1,0.3))
         threshold = torch.max(energy, dim=1).values * cutoff
-        
         return energy > threshold[:, None]
         
     def build_input_tokens(self, speakers, logmels):
@@ -244,43 +243,10 @@ class FastSpeech2(nn.Module):
             else None
         )
         
-        tokens = self.build_input_tokens(speakers, mels)
-        tokens = tokens * (~mel_masks)
-            
-        tokens_emb = self.src_word_emb(tokens) * (~mel_masks.unsqueeze(-1))
-        
-        output,_ = self.latent_lstm(tokens_emb)
-        output = output * (~mel_masks.unsqueeze(-1))
-        
-        output = self.encoder(output, mel_masks)
-        output = output * (~mel_masks.unsqueeze(-1))
-        
-        (
-            output,
-            p_predictions,
-            e_predictions,
-            log_d_predictions,
-            d_rounded,
-            _,
-            mel_masks,
-        ) = self.energy_adaptor(
-            output,
-            mel_masks,
-            mel_masks,
-            max_mel_len,
-            p_targets,
-            e_targets,
-            d_targets,
-            p_control,
-            e_control,
-            d_control,
-        )
+        tokens_emb = mels.clone()
+        tokens_emb[...,32:] = tokens_emb[...,32:] * 0 - 6
         
         if self.speaker_emb is not None:
-            g = self.speaker_emb(speakers)
-            output = output + g.unsqueeze(1).expand(
-                -1, max_mel_len, -1
-            )
             g_diff = self.diff_speaker_embedding(speakers)
             g_diff = g_diff.unsqueeze(1).expand(
                 g_diff.size(0), max_mel_len, g_diff.size(1)
@@ -288,23 +254,22 @@ class FastSpeech2(nn.Module):
         else: 
             g=None
 
-        output = self.wn(output.permute(0,2,1), ~mel_masks, g=g) 
-        mel_pred = self.mel_linear(output)
-        
-        postnet_output = self.postnet(mel_pred) + mel_pred
-        log_d_predictions,d_rounded = None, None
-        
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(postnet_output, mels, g=g_diff, gen=False).mean() # TODO detach here
-            
+            diff_loss = self.diff(tokens_emb, mels, g=g_diff, gen=False).mean() # TODO detach here
+            postnet_output = mels
         else:
-            diff_output = self.diff(postnet_output, mels, g=g_diff, gen=True) # TODO detach here
+            diff_output = self.diff(tokens_emb, mels, g=g_diff, gen=True) # TODO detach here
             postnet_output = diff_output
             diff_loss = None
 
+        p_predictions = None
+        e_predictions = None
+        log_d_predictions = None
+        d_rounded = None
+        
         return (
-            mel_pred,
+            mels,
             postnet_output,
             p_predictions,
             e_predictions,
@@ -344,7 +309,8 @@ class DiffusionDecoder(nn.Module):
 
   def marginal_prob(self, mu, x, t):
     log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu
+    # mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu # remove mu
+    mean = torch.exp(log_mean_coeff[:, None, None]) * x
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 
@@ -369,7 +335,8 @@ class DiffusionDecoder(nn.Module):
       return loss
     else:
       with torch.no_grad():
-        y_T = torch.randn_like(mu) + mu
+        # y_T = torch.randn_like(mu) + mu # remove mu
+        y_T = torch.randn_like(mu) 
         y_t_plus_one = y_T
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
@@ -379,6 +346,7 @@ class DiffusionDecoder(nn.Module):
           else:
               x = torch.stack([y_t_plus_one, mu], 1)
           grad = self.unet(x, t)
-          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
+          # y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
+          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)
           y_t_plus_one = y_t
       return y_t

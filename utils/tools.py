@@ -66,22 +66,22 @@ def to_device(data, device):
 
 
 def log(
-    logger, step=None, losses=None, fig=None, audio=None, sampling_rate=22050, tag=""
+    logger, step=None, fig=None, audio=None, sampling_rate=22050, tag=""
 ):
-    if losses is not None:
-        logger.add_scalar("Loss/total_loss", losses[0], step)
-        logger.add_scalar("Loss/mel_loss", losses[1], step)
-        logger.add_scalar("Loss/mel_postnet_loss", losses[2], step)
-        logger.add_scalar("Loss/pitch_loss", losses[3], step)
-        logger.add_scalar("Loss/energy_loss", losses[4], step)
-        logger.add_scalar("Loss/duration_loss", losses[5], step)
-        if(len(losses) > 6):
-            logger.add_scalar("Loss/disc_loss", losses[6], step)
-            logger.add_scalar("Loss/fmap_loss", losses[7], step)
-            logger.add_scalar("Loss/r_loss", losses[8], step)
-            logger.add_scalar("Loss/g_loss", losses[9], step)
-            logger.add_scalar("Loss/gen_loss", losses[10], step)
-            logger.add_scalar("Loss/diff_loss", losses[11], step)
+    # if losses is not None:
+    #     logger.add_scalar("Loss/total_loss", losses[0], step)
+    #     logger.add_scalar("Loss/mel_loss", losses[1], step)
+    #     logger.add_scalar("Loss/mel_postnet_loss", losses[2], step)
+    #     logger.add_scalar("Loss/pitch_loss", losses[3], step)
+    #     logger.add_scalar("Loss/energy_loss", losses[4], step)
+    #     logger.add_scalar("Loss/duration_loss", losses[5], step)
+    #     if(len(losses) > 6):
+    #         logger.add_scalar("Loss/disc_loss", losses[6], step)
+    #         logger.add_scalar("Loss/fmap_loss", losses[7], step)
+    #         logger.add_scalar("Loss/r_loss", losses[8], step)
+    #         logger.add_scalar("Loss/g_loss", losses[9], step)
+    #         logger.add_scalar("Loss/gen_loss", losses[10], step)
+    #         logger.add_scalar("Loss/diff_loss", losses[11], step)
 
     if fig is not None:
         logger.add_figure(tag, fig)
@@ -140,7 +140,14 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     ) as f: 
         stats = json.load(f)
         stats = stats["pitch"] + stats["energy"][:2]
-
+        
+    # from datetime import datetime
+    # now = datetime.now()
+    # current_time = now.strftime("%D:%H:%M:%S")
+    # np.save(("mel_pred_%s.npy" % current_time).replace("/","-"), mel_prediction.cpu().numpy())
+    # np.save(("postnet_mel_prediction_%s.npy" % current_time).replace("/","-"), postnet_mel_prediction.cpu().numpy())
+    # np.save(("mel_target_%s.npy" % current_time).replace("/","-"), mel_target.cpu().numpy())
+    
     fig = plot_mel(
         [
             (mel_prediction.cpu().numpy(), pitch, energy),
@@ -266,7 +273,7 @@ def plot_mel(data, stats, titles):
         ax1.tick_params(
             labelsize="x-small", colors="tomato", bottom=False, labelbottom=False
         )
-
+        
         ax2 = add_axis(fig, axes[i][0])
         ax2.plot(energy, color="darkviolet")
         ax2.set_xlim(0, mel.shape[1])

@@ -49,7 +49,7 @@ def main(args, configs):
         dataset,
         batch_size=batch_size * group_size,
         shuffle=True,
-        collate_fn=dataset.collate_fn,
+        collate_fn=dataset.collate_fn
     )
     disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
@@ -96,41 +96,8 @@ def main(args, configs):
 
                 # Forward
                 output, (z,m,logs,logdet,mel_masks, diff_loss, diff_output) = model(*(batch[2:]), gen=False)
-
-                # Cal Loss
-                losses, (mel_predictions, mel_targets) = Loss(batch, output)
                 
-                # mle_loss = mle_lossfunc(z,m,logs,logdet,~mel_masks.unsqueeze(1))
-                mle_loss = torch.tensor([0.0]).cuda()
-                
-                disc_loss, fmap_loss = torch.tensor([0.0]), torch.tensor([0.0])
-                r_losses, g_losses = torch.tensor([0.0]), torch.tensor([0.0])
-                gen_loss = torch.tensor([0.0])
-                
-                if(step >2000000):
-                    disc_real_outputs, _ = disc(mel_targets)
-                    disc_generated_outputs, _ = disc(mel_predictions.detach())
-                    disc_loss, r_losses, g_losses = Loss.discriminator_loss([disc_real_outputs], [disc_generated_outputs])
-                    r_losses = torch.sum(torch.tensor(r_losses))
-                    g_losses = torch.sum(torch.tensor(g_losses))
-                    d_loss = 5 * disc_loss / grad_acc_step # 100 * 1
-                    d_loss.backward()
-                    if step % grad_acc_step == 0:
-                        nn.utils.clip_grad_norm_(disc.parameters(), grad_clip_thresh)
-                        opt_d.step_and_update_lr()
-                        opt_d.zero_grad()
-                
-                if(step > 6000000):
-                    # Backward
-                    disc_real_outputs, fmap_real = disc(mel_targets)
-                    disc_generated_outputs, fmap_generated = disc(mel_predictions)
-                    fmap_loss = Loss.feature_loss([fmap_real], [fmap_generated])
-                    gen_loss, gen_loss_items = Loss.generator_loss([disc_generated_outputs])
-                    total_loss = losses[0] + fmap_loss + gen_loss
-                else:
-                    total_loss = losses[0]
-                
-                total_loss = total_loss + 10 * diff_loss
+                total_loss =  diff_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -140,29 +107,23 @@ def main(args, configs):
                     # Update weights
                     optimizer.step_and_update_lr()
                     optimizer.zero_grad()
-
-                losses = list(losses)
-                
-                losses.extend([disc_loss, fmap_loss])
-                losses.extend([r_losses, g_losses, gen_loss, diff_loss])
-                
+                    
                 if step % log_step == 0:
-                    losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f},  Disc Loss: {:.4f},  Fmap Loss: {:.4f}, r_loss: {:.4f}, g_loss: {:.4f}, Gen Loss: {:.4f}, Diff Loss: {:.4f}".format(
-                        *losses
+                    message2 = "Total Loss: {:.4f}".format(
+                        diff_loss
                     )
 
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                         f.write(message1 + message2 + "\n")
 
                     outer_bar.write(message1 + message2)
-                    log(train_logger, step, losses=losses)
+                    log(train_logger, step)
 
                 if step % synth_step == 0:
                     with torch.no_grad():
                         model.eval()
-                        output, (z,m,logs,logdet,mel_masks) = model(*(batch[2:]), gen=True)
+                        output, _ = model(*(batch[2:]), gen=True)
                     model.train()
                     fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
                         batch,
@@ -194,11 +155,10 @@ def main(args, configs):
 
                 if step % val_step == 0:
                     model.eval()
-                    message = evaluate(model, step, configs, val_logger, vocoder)
-                    with open(os.path.join(val_log_path, "log.txt"), "a") as f:
-                        f.write(message + "\n")
-                    outer_bar.write(message)
-
+                    evaluate(model, step, configs, val_logger, vocoder)
+                    # with open(os.path.join(val_log_path, "log.txt"), "a") as f:
+                    #     f.write(message + "\n")
+                    # outer_bar.write(message)
                     model.train()
 
                 if step % save_step == 0:
