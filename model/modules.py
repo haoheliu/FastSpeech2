@@ -119,13 +119,13 @@ class EnergyAdaptor(nn.Module):
             energy_prediction, energy_embedding = self.get_energy_embedding(
                 x, energy_target, mel_mask, p_control
             )
-            x = x + energy_embedding
+            # x = x + energy_embedding
 
         if self.pitch_feature_level == "frame_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(
                 x, pitch_target, mel_mask, p_control
             )
-            x = x + pitch_embedding
+            # x = x + pitch_embedding
             
         return (
             x,
@@ -135,6 +135,8 @@ class EnergyAdaptor(nn.Module):
             None,
             None,
             mel_mask,
+            energy_embedding,
+            pitch_embedding
         )
         
 class VarianceAdaptor(nn.Module):

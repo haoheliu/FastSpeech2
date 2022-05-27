@@ -19,7 +19,7 @@ rsync -r /vol/research/ai4sound/project/audio_generation/FastSpeech2 /mnt/fast/n
 cd /mnt/fast/nobackup/users/hl01486/projects/audio_generation_diff/FastSpeech2
 
 ######################## SETUP ########################
-EXP_NAME="fs2_esc50_16k_gen"
+EXP_NAME="us8k_exp6_diff_energy_pitch"
 
 ######################## RUNNING ENTRY ########################
 # $1=pcen@delta_mfcc

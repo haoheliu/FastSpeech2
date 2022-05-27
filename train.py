@@ -97,7 +97,10 @@ def main(args, configs):
                 # Forward
                 output, (z,m,logs,logdet,mel_masks, diff_loss, diff_output) = model(*(batch[2:]), gen=False)
                 
-                total_loss =  diff_loss
+                losses, _ = Loss(batch, output)
+                total_loss,mel_loss, postnet_mel_loss, pitch_loss, energy_loss, duration_loss = losses
+                
+                total_loss =  diff_loss + pitch_loss + energy_loss 
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -110,8 +113,8 @@ def main(args, configs):
                     
                 if step % log_step == 0:
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}".format(
-                        diff_loss
+                    message2 = "Diff Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}".format(
+                        diff_loss, pitch_loss, energy_loss
                     )
 
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:

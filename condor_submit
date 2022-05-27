@@ -11,7 +11,7 @@ arguments =  /mnt/fast/nobackup/users/hl01486/projects/audio_generation_diff/Fas
 log    = condor_log/c$(cluster).p$(process).log
 output = condor_log/c$(cluster).p$(process).out
 error  = condor_log/c$(cluster).p$(process).error
-JobBatchName = "us8k_exp6_diff"
+JobBatchName = "us8k_exp6_diff_energy_pitch"
 
 # -----------------------------------
 # File Transfer, Input, Output
@@ -25,7 +25,7 @@ Environment = PYTHONIOENCODING=UTF-8
 +GPUMem = 8096
 # -------------------------------------
 # Requirements for the Job
-requirements = (CUDADeviceName == "GeForce GTX TITAN X") || HasWeka && HasStornext && ((CUDADeviceName == "GeForce RTX 3090")) 
+requirements = (CUDADeviceName == "GeForce GTX TITAN X") || HasWeka && HasStornext && (((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")))
 
 # (CUDADeviceName == "Quadro RTX 5000") || ((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")) && (machine == "aisurrey03.surrey.ac.uk")
 
