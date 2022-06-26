@@ -123,7 +123,7 @@ def main(args, configs):
                     outer_bar.write(message1 + message2)
                     log(train_logger, step)
 
-                if step % synth_step == 0:
+                if step % synth_step == 0 or step == 950001:
                     with torch.no_grad():
                         model.eval()
                         output, _ = model(*(batch[2:]), gen=True)
@@ -156,9 +156,10 @@ def main(args, configs):
                         tag="Training/step_{}_{}_synthesized".format(step, tag),
                     )
 
-                if step % val_step == 0:
+                if step % val_step == 0 or step == 950001:
                     model.eval()
                     evaluate(model, step, configs, val_logger, vocoder)
+                    evaluate(model, step, configs, val_logger, vocoder, pred_prosody=False)
                     # with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                     #     f.write(message + "\n")
                     # outer_bar.write(message)

@@ -112,6 +112,72 @@ def expand(values, durations):
     return np.array(out)
 
 
+def synth_one_sample_val(targets, predictions, vocoder, model_config, preprocess_config):
+    index = np.random.choice(list(np.arange(targets[6].size(0))))
+    
+    basename = targets[0][index]
+    src_len = predictions[8][index].item()
+    mel_len = predictions[9][index].item()
+    mel_target = targets[6][index, :mel_len].detach().transpose(0, 1)
+
+    mel_prediction = predictions[0][index, :mel_len].detach().transpose(0, 1)
+    postnet_mel_prediction = predictions[1][index, :mel_len].detach().transpose(0, 1)
+    duration = targets[11][index, :src_len].detach().cpu().numpy()
+
+    if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
+        pitch = predictions[2][index, :src_len].detach().cpu().numpy()
+        pitch = expand(pitch, duration)
+    else:
+        pitch = predictions[2][index, :mel_len].detach().cpu().numpy()
+        
+    if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
+        energy = predictions[3][index, :src_len].detach().cpu().numpy()
+        energy = expand(energy, duration)
+    else:
+        energy = predictions[3][index, :mel_len].detach().cpu().numpy()
+
+    with open(
+        os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+    ) as f: 
+        stats = json.load(f)
+        stats = stats["pitch"] + stats["energy"][:2]
+        
+    # from datetime import datetime
+    # now = datetime.now()
+    # current_time = now.strftime("%D:%H:%M:%S")
+    # np.save(("mel_pred_%s.npy" % current_time).replace("/","-"), mel_prediction.cpu().numpy())
+    # np.save(("postnet_mel_prediction_%s.npy" % current_time).replace("/","-"), postnet_mel_prediction.cpu().numpy())
+    # np.save(("mel_target_%s.npy" % current_time).replace("/","-"), mel_target.cpu().numpy())
+    
+    fig = plot_mel(
+        [
+            (mel_prediction.cpu().numpy(), pitch, energy),
+            (postnet_mel_prediction.cpu().numpy(), pitch, energy),
+            (mel_target.cpu().numpy(), pitch, energy),
+        ],
+        stats,
+        ["Raw mel spectrogram prediction", "Postnet mel prediction", "Ground-Truth Spectrogram"],
+    )
+
+    if vocoder is not None:
+        from .model import vocoder_infer
+        wav_reconstruction = vocoder_infer(
+            mel_target.unsqueeze(0),
+            vocoder,
+            model_config,
+            preprocess_config,
+        )[0]
+        wav_prediction = vocoder_infer(
+            postnet_mel_prediction.unsqueeze(0),
+            vocoder,
+            model_config,
+            preprocess_config,
+        )[0]
+    else:
+        wav_reconstruction = wav_prediction = None
+
+    return fig, wav_reconstruction, wav_prediction, basename
+
 def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config):
     index = np.random.choice(list(np.arange(targets[6].size(0))))
     
@@ -129,6 +195,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         pitch = expand(pitch, duration)
     else:
         pitch = targets[9][index, :mel_len].detach().cpu().numpy()
+
     if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
         energy = targets[10][index, :src_len].detach().cpu().numpy()
         energy = expand(energy, duration)
@@ -178,29 +245,30 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     return fig, wav_reconstruction, wav_prediction, basename
 
 
-def synth_samples(targets, predictions, diffusion, vocoder, model_config, preprocess_config, path):
+def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
     
-    (diff_output, diff_loss, latent_loss) = diffusion
+    # (diff_output, diff_loss, latent_loss) = diffusion
     
     basenames = targets[0]
-    for i in range(len(predictions[0])):
+    
+    for i in range(len(predictions[1])):
         basename = basenames[i]
         src_len = predictions[8][i].item()
         mel_len = predictions[9][i].item()
         mel_prediction = predictions[1][i, :mel_len].detach().transpose(0, 1)
-        diff_output = diff_output[i, :mel_len].detach().transpose(0, 1)
-        duration = predictions[5][i, :src_len].detach().cpu().numpy()
+        # diff_output = diff_output[i, :mel_len].detach().transpose(0, 1)
+        # duration = predictions[5][i, :src_len].detach().cpu().numpy()
         if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
             pitch = predictions[2][i, :src_len].detach().cpu().numpy()
-            pitch = expand(pitch, duration)
+            # pitch = expand(pitch, duration)
         else:
             pitch = predictions[2][i, :mel_len].detach().cpu().numpy()
         if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
             energy = predictions[3][i, :src_len].detach().cpu().numpy()
-            energy = expand(energy, duration)
+            # energy = expand(energy, duration)
         else:
             energy = predictions[3][i, :mel_len].detach().cpu().numpy()
-
+        # import ipdb; ipdb.set_trace()
         with open(
             os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
         ) as f:
@@ -216,17 +284,6 @@ def synth_samples(targets, predictions, diffusion, vocoder, model_config, prepro
         )
         # np.save("{}_postnet.npy".format(basename), mel_prediction.cpu().numpy())
         plt.savefig(os.path.join(path, "{}_postnet_2.png".format(basename)))
-        plt.close()
-
-        fig = plot_mel(
-            [
-                (diff_output.cpu().numpy(), pitch, energy),
-            ],
-            stats,
-            ["Synthetized Spectrogram by Diffusion"],
-        )
-        # np.save("{}_diff.npy".format(basename), mel_prediction.cpu().numpy())
-        plt.savefig(os.path.join(path, "{}_diff_2.png".format(basename)))
         plt.close()
 
     from .model import vocoder_infer

@@ -90,18 +90,18 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
         batch = to_device(batch, device)
         with torch.no_grad():
             # Forward
-            output, (diff_output, diff_loss, latent_loss) = model(
+            output, _ = model(
                 *(batch[2:]),
                 p_control=pitch_control,
                 e_control=energy_control,
                 d_control=duration_control,
                 gen=True,
             )
-            diffusion = (diff_output, diff_loss, latent_loss)
+            # diffusion = (diff_output, diff_loss, latent_loss)
             synth_samples(
                 batch,
                 output,
-                diffusion,
+                # diffusion,
                 vocoder,
                 model_config,
                 preprocess_config,
@@ -111,10 +111,10 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
 def generate_general_sound_token(sound_idx):
     sequence = []
     result = int(sound_idx[0])
-    for i in range(50):
-        if(i < 10): sequence.append(0)
-        if(i > 40): sequence.append(0)
-        else: sequence.append(result)
+    for i in range(500):
+        # if(i < 100): sequence.append(0)
+        # if(i > 400): sequence.append(0)
+        sequence.append(result)
     return np.array(sequence), len(sequence)
 
 if __name__ == "__main__":

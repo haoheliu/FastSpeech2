@@ -25,10 +25,9 @@ Environment = PYTHONIOENCODING=UTF-8
 +GPUMem = 8096
 # -------------------------------------
 # Requirements for the Job
-requirements = (CUDADeviceName == "GeForce GTX TITAN X") || HasWeka && HasStornext && (((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")))
+requirements = (CUDADeviceName == "GeForce GTX TITAN X") || HasWeka && (CUDADeviceName == "GeForce RTX 3090") 
 
-# (CUDADeviceName == "Quadro RTX 5000") || ((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")) && (machine == "aisurrey03.surrey.ac.uk")
-
+# (CUDADeviceName == "Quadro RTX 5000") || ((CUDADeviceName == "GeForce RTX 3090")) || ((CUDADeviceName == "GeForce RTX 2080 Ti")) && (machine == "aisurrey03.surrey.ac.uk") || ((CUDADeviceName == "GeForce RTX 2080 Ti"))) && HasStornext
 # (CUDADeviceName == "GeForce GTX TITAN X") 
 # && (machine != "aisurrey07.surrey.ac.uk") && (machine != "aisurrey06.surrey.ac.uk") && (machine != "aisurrey01.surrey.ac.uk") && (machine != "aisurrey04.surrey.ac.uk")
 

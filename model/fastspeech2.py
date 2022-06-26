@@ -226,6 +226,11 @@ class FastSpeech2(nn.Module):
         d_control=1.0,
         gen=False
     ):
+      
+        if(mel_lens is None):
+          mel_lens = src_lens
+          max_mel_len = max_src_len
+
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
             if mel_lens is not None
@@ -266,8 +271,6 @@ class FastSpeech2(nn.Module):
             e_control,
             d_control,
         )
-        # pitch_embedding = self.proj_pitch(pitch_embedding)
-        # energy_embedding = self.proj_energy(energy_embedding)
         
         if(not gen):
             diff_output = None
@@ -357,11 +360,11 @@ class DiffusionDecoder(nn.Module):
     else:
       with torch.no_grad():
         # y_T = torch.randn_like(mu) + mu # remove mu
-        y_T = torch.randn_like(y) 
+        y_T = torch.randn_like(energy_embedding) 
         y_t_plus_one = y_T
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
-          t = torch.FloatTensor(1).fill_(n).to(y.device)
+          t = torch.FloatTensor(1).fill_(n).to(energy_embedding.device)
           
           if(mu is None):
             if g is not None:
