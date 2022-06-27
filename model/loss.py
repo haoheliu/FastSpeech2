@@ -130,4 +130,4 @@ class FastSpeech2Loss(nn.Module):
             pitch_loss,
             energy_loss,
             duration_loss,
-        ), (postnet_mel_predictions, mel_targets)
+        ), (postnet_mel_predictions, mel_targets, pitch_predictions, energy_predictions)

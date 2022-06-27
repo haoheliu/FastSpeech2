@@ -8,6 +8,26 @@ import hifigan
 from model import FastSpeech2, ScheduledOptim
 from discriminator import SpecDiscriminator
 
+def load_checkpoint(ckpt, model):
+    saved_state_dict = ckpt['model']
+    state_dict = model.state_dict()
+    new_state_dict= {}
+    # print("Do not load the param from pitch and energy predictor")
+    for k, v in state_dict.items():
+        # if("pitch_predictor" in k or "energy_predictor" in k):
+        #     continue
+        try:
+            new_state_dict[k] = saved_state_dict[k]
+        except:
+            print("%s is not in the checkpoint" % k)
+            new_state_dict[k] = v
+    try:
+        model.load_state_dict(new_state_dict)
+    except:
+        model.load_state_dict(new_state_dict, strict=False)
+        print("Warning: Load model with strict=False")
+    return model
+
 def get_model(args, configs, device, train=False):
     (preprocess_config, model_config, train_config) = configs
 
@@ -18,14 +38,16 @@ def get_model(args, configs, device, train=False):
             "{}.pth.tar".format(args.restore_step),
         )
         ckpt = torch.load(ckpt_path)
-        model.load_state_dict(ckpt["model"])
+        # model.load_state_dict(ckpt["model"])
+        # import ipdb; ipdb.set_trace()
+        model = load_checkpoint(ckpt, model)
 
     if train:
         scheduled_optim = ScheduledOptim(
             model, train_config, model_config, args.restore_step
         )
-        if args.restore_step:
-            scheduled_optim.load_state_dict(ckpt["optimizer"])
+        # if args.restore_step:
+        #     scheduled_optim.load_state_dict(ckpt["optimizer"])
         model.train()
         return model, scheduled_optim
 

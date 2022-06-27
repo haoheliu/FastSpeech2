@@ -9,6 +9,7 @@ class ScheduledOptim:
 
         self._optimizer = torch.optim.Adam(
             model.parameters(),
+            lr=train_config["optimizer"]["learning_rate"],
             betas=train_config["optimizer"]["betas"],
             eps=train_config["optimizer"]["eps"],
             weight_decay=train_config["optimizer"]["weight_decay"],
@@ -17,7 +18,7 @@ class ScheduledOptim:
         self.anneal_steps = train_config["optimizer"]["anneal_steps"]
         self.anneal_rate = train_config["optimizer"]["anneal_rate"]
         self.current_step = current_step
-        self.init_lr = np.power(model_config["transformer"]["encoder_hidden"], -0.5)
+        self.init_lr = 3e-5
 
     def step_and_update_lr(self):
         self._update_learning_rate()
@@ -31,21 +32,29 @@ class ScheduledOptim:
         self._optimizer.load_state_dict(path)
 
     def _get_lr_scale(self):
-        lr = np.min(
-            [
-                np.power(self.current_step, -0.5),
-                np.power(self.n_warmup_steps, -1.5) * self.current_step,
-            ]
-        )
+        # lr = np.min(
+        #     [
+        #         np.power(self.current_step, -0.5),
+        #         np.power(self.n_warmup_steps, -1.5) * self.current_step,
+        #     ]
+        # )
         for s in self.anneal_steps:
             if self.current_step > s:
                 lr = lr * self.anneal_rate
         return lr
 
+    def get_learning_rate(self):
+        ret = []
+        for param_group in self._optimizer.param_groups:
+            ret.append(param_group["lr"])
+        return ret
+
     def _update_learning_rate(self):
         """ Learning rate scheduling per step """
         self.current_step += 1
-        lr = self.init_lr * self._get_lr_scale()
-
+        # lr = self.init_lr * self._get_lr_scale()
+        # import ipdb; ipdb.set_trace()
+        if(self.current_step % 10000 == 0):
+            self.init_lr *= 0.98
         for param_group in self._optimizer.param_groups:
-            param_group["lr"] = lr
+            param_group["lr"] = self.init_lr

@@ -10,6 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from utils.tools import get_mask_from_lengths, pad
+from model.nuwave.nuwave import NuWave
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -19,9 +20,11 @@ class EnergyAdaptor(nn.Module):
 
     def __init__(self, preprocess_config, model_config):
         super(EnergyAdaptor, self).__init__()
-        self.pitch_predictor = VariancePredictor(model_config)
-        self.energy_predictor = VariancePredictor(model_config)
+        # self.pitch_predictor = VariancePredictor(model_config)
+        # self.energy_predictor = VariancePredictor(model_config)
         
+        self.pitch_energy_predictor = NuWave()
+
         self.pitch_feature_level = preprocess_config["preprocessing"]["pitch"][
             "feature"
         ]
@@ -80,8 +83,8 @@ class EnergyAdaptor(nn.Module):
             n_bins, model_config["transformer"]["encoder_hidden"]
         )
 
-    def get_energy_embedding(self, x, target, mask, control):
-        prediction = self.energy_predictor(x, mask)
+    def get_energy_embedding(self, prediction, target, control):
+        # import ipdb; ipdb.set_trace()
         if target is not None:
             embedding = self.energy_embedding(torch.bucketize(target, self.energy_bins))
         else:
@@ -91,8 +94,7 @@ class EnergyAdaptor(nn.Module):
         )
         return prediction, embedding
 
-    def get_pitch_embedding(self, x, target, mask, control):
-        prediction = self.pitch_predictor(x, mask)
+    def get_pitch_embedding(self, prediction, target, control):
         if target is not None:
             embedding = self.pitch_embedding(torch.bucketize(target, self.pitch_bins))
         else:
@@ -105,6 +107,7 @@ class EnergyAdaptor(nn.Module):
     def forward(
         self,
         x,
+        labels,
         src_mask,
         mel_mask=None,
         max_len=None,
@@ -114,21 +117,35 @@ class EnergyAdaptor(nn.Module):
         p_control=1.0,
         e_control=1.0,
         d_control=1.0,
+        gen=False
     ):
-        if self.energy_feature_level == "frame_level":
-            energy_prediction, energy_embedding = self.get_energy_embedding(
-                x, energy_target, mel_mask, p_control
-            )
-            # x = x + energy_embedding
+        if(gen):
+            pitch_energy = self.pitch_energy_predictor.test_step(labels)
+            pitch_prediction = pitch_energy[:,0,:]
+            energy_prediction = pitch_energy[:,1,:]
+            nuwave_loss = torch.tensor([0.0]).cuda()
+            if mel_mask is not None:
+                pitch_prediction = pitch_prediction.masked_fill(mel_mask, 0.0)
+                energy_prediction = energy_prediction.masked_fill(mel_mask, 0.0)
+        else:
+            pitch_energy = torch.cat([pitch_target.unsqueeze(1), energy_target.unsqueeze(1)], dim=1)
+            nuwave_loss = self.pitch_energy_predictor.training_step((pitch_energy, labels))
+            pitch_prediction = pitch_target
+            energy_prediction = energy_target
 
-        if self.pitch_feature_level == "frame_level":
-            pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                x, pitch_target, mel_mask, p_control
-            )
-            # x = x + pitch_embedding
-            
+        energy_prediction, energy_embedding = self.get_energy_embedding(
+            energy_prediction, energy_target, p_control
+        )
+        
+        # x = x + energy_embedding
+
+        pitch_prediction, pitch_embedding = self.get_pitch_embedding(
+            pitch_prediction, pitch_target, p_control
+        )
+
         return (
             x,
+            nuwave_loss,
             pitch_prediction,
             energy_prediction,
             None,

@@ -12,6 +12,7 @@ optimizer:
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
+  learning_rate: 0.00003
   grad_clip_thresh: 1.0
   grad_acc_step: 2
   warm_up_step: 4000
@@ -20,6 +21,6 @@ optimizer:
 step:
   total_step: 1800000
   log_step: 100
-  synth_step: 5000
-  val_step: 10000
-  save_step: 50000
+  synth_step: 1000
+  val_step: 5000
+  save_step: 100000

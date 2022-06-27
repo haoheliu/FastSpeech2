@@ -20,6 +20,12 @@ import model.glow.attentions as attentions
 import model.wavenet.modules as modules_wavenet
 import model.wavenet.commons as commons_wavenet
 
+def reset_weights(m):
+    for name, layer in m.named_children():
+        if hasattr(layer, 'reset_parameters'):
+            print(f'Reset trainable parameters of layer = {layer}')
+            layer.reset_parameters()
+
 class WaveNetEncoder(nn.Module):
   def __init__(self,
       in_channels,
@@ -189,7 +195,9 @@ class FastSpeech2(nn.Module):
             )
         
         self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
-        
+
+        # self.reset = True
+
         # self.proj_pitch = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
         # self.proj_energy = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
         
@@ -226,7 +234,11 @@ class FastSpeech2(nn.Module):
         d_control=1.0,
         gen=False
     ):
-      
+        # if(not self.reset):
+        #   print("reset param")
+        #   self.energy_adaptor.apply(reset_weights)
+        #   self.reset = True
+
         if(mel_lens is None):
           mel_lens = src_lens
           max_mel_len = max_src_len
@@ -248,9 +260,14 @@ class FastSpeech2(nn.Module):
             )
         else: 
             g=None
-            
+
+        speakers = speakers.unsqueeze(1).expand(speakers.size(0), max_mel_len).float()
+        speakers = (speakers-5)/10.0
+        
+        # if(gen):
         (
             _,
+            nuwave_loss,
             p_predictions,
             e_predictions,
             log_d_predictions,
@@ -261,6 +278,7 @@ class FastSpeech2(nn.Module):
             pitch_embedding
         ) = self.energy_adaptor(
             g_diff,
+            speakers,
             mel_masks,
             mel_masks,
             max_mel_len,
@@ -270,11 +288,13 @@ class FastSpeech2(nn.Module):
             p_control,
             e_control,
             d_control,
+            gen,
         )
-        
+
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(tokens_emb, mels, (energy_embedding, pitch_embedding), g=g_diff, gen=False).mean() # TODO detach here
+            # diff_loss = self.diff(tokens_emb, mels, (energy_embedding, pitch_embedding), g=g_diff, gen=False).mean() # TODO detach here
+            diff_loss = torch.tensor([0.0]).cuda()
             postnet_output = mels
         else:
             diff_output = self.diff(tokens_emb, mels, (energy_embedding, pitch_embedding), g=g_diff, gen=True) # TODO detach here
@@ -295,7 +315,7 @@ class FastSpeech2(nn.Module):
             mel_masks,
             src_lens,
             mel_lens,
-        ), (None, None, None, None, mel_masks, diff_loss, diff_output)
+        ), (None, None, None, None, mel_masks, diff_loss, diff_output, nuwave_loss)
         
         
 class DiffusionDecoder(nn.Module):

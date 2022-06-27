@@ -13,9 +13,11 @@ from dataset import Dataset
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+last_pitch = None
+last_energy = None
 
 def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True):
+    global last_pitch, last_energy
     preprocess_config, model_config, train_config = configs
 
     # Get dataset
@@ -36,6 +38,14 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True)
     # Evaluation
     loss_sums = [0 for _ in range(6)]
     idx = 0
+
+    def range_compress(data, rate=0.5):
+        min_val = torch.min(data)
+        data = data - min_val
+        data = data * rate
+        data += min_val
+        return data
+
     for batchs in loader:
         if(idx > 2): break # Run only one sample
         for batch in batchs: 
@@ -43,22 +53,42 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True)
             # Remove the target pitch and energy
             batch = to_device(batch, device)
 
+            # batch = list(batch)
+            # batch[9] = torch.zeros_like(batch[9]).to(batch[9].device)
+            # batch[9] = range_compress(batch[9], 0.0)
+            # batch[10] = range_compress(batch[10], 1.0)  
+
+            # if(last_energy is None and last_pitch is None):
+            #     last_pitch = batch[9]
+            #     last_energy = batch[10]
+
+            # if(last_pitch.size() == batch[9].size()):
+            #     batch[9] = (last_pitch + batch[9]) / 2
+            #     batch[10] = (last_energy + batch[10]) / 2
+
+
+            # from scipy.signal import medfilt
+            # import numpy as np
+            # for i in range(batch[9].size(0)):
+            #     batch[9][i] = torch.tensor(medfilt(batch[9][i].detach().cpu().numpy(), kernel_size=7)).cuda()
+            #     batch[10][i] = torch.tensor(medfilt(batch[10][i].detach().cpu().numpy(), kernel_size=7)).cuda()
+
+            # batch = tuple(batch)
+
             if(pred_prosody):
                 batch = list(batch)
                 batch[9] = None
                 batch[10] = None
                 batch = tuple(batch)
-            
+
             with torch.no_grad():
                 # Forward
                 output, _ = model(*(batch[2:]), gen=True)
-
                 # Cal Loss
                 # losses,_ = Loss(batch, output)
 
                 # for i in range(len(losses)):
                 #     loss_sums[i] += losses[i].item() * len(batch[0])
-
     # loss_means = [loss_sum / len(dataset) for loss_sum in loss_sums]
 
     # message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(

@@ -17,6 +17,8 @@ import math
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+
 def mle_lossfunc(z, m, logs, logdet, mask):
     # import ipdb; ipdb.set_trace()
     l = torch.sum(logs) + 0.5 * torch.sum(torch.exp(-2 * logs) * ((z - m)**2)) # neg normal likelihood w/o the constant term
@@ -86,21 +88,30 @@ def main(args, configs):
     outer_bar = tqdm(total=total_step, desc="Training", position=0)
     outer_bar.n = args.restore_step
     outer_bar.update()
-
+    
     while True:
         inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
+        print("Learning rate", optimizer.get_learning_rate())
         # import ipdb; ipdb.set_trace()
         for batchs in loader:
             for batch in batchs:
                 batch = to_device(batch, device)
 
                 # Forward
-                output, (z,m,logs,logdet,mel_masks, diff_loss, diff_output) = model(*(batch[2:]), gen=False)
+                output, (z,m,logs,logdet,mel_masks, diff_loss, diff_output, nuwave_loss) = model(*(batch[2:]), gen=False)
                 
-                losses, _ = Loss(batch, output)
+                for i in range(batch[9].size(0)):
+                    # batch[9][i] = torch.sin(torch.arange(0, 10, 10/batch[9][i].shape[0]))
+                    batch[10][i] = torch.cos(torch.arange(0, 10, 10/batch[10][i].shape[0]))
+                
+                losses, part_two = Loss(batch, output) # output[2], [3]: pitch, energy
                 total_loss,mel_loss, postnet_mel_loss, pitch_loss, energy_loss, duration_loss = losses
+                postnet_mel_predictions, mel_targets, pitch_predictions, energy_predictions = part_two
                 
-                total_loss =  diff_loss + pitch_loss + energy_loss 
+                # print(1, torch.std(batch[9]), torch.std(batch[10]))
+                # print(2, torch.std(pitch_predictions), torch.std(energy_predictions))
+
+                total_loss =  diff_loss + pitch_loss + energy_loss + nuwave_loss
                 total_loss = total_loss / grad_acc_step
                 total_loss.backward()
                 
@@ -113,17 +124,17 @@ def main(args, configs):
                     
                 if step % log_step == 0:
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Diff Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}".format(
-                        diff_loss, pitch_loss, energy_loss
+                    message2 = "Diff Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Nuwave Loss: {:.4f}".format(
+                        float(diff_loss), pitch_loss, energy_loss, float(nuwave_loss)
                     )
-
+                    train_logger.add_scalar("Loss/pitch_energy_diff_loss", nuwave_loss, step)
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                         f.write(message1 + message2 + "\n")
 
                     outer_bar.write(message1 + message2)
                     log(train_logger, step)
 
-                if step % synth_step == 0 or step == 950001:
+                if step % synth_step == 0: # or step == 950001
                     with torch.no_grad():
                         model.eval()
                         output, _ = model(*(batch[2:]), gen=True)
@@ -156,7 +167,7 @@ def main(args, configs):
                         tag="Training/step_{}_{}_synthesized".format(step, tag),
                     )
 
-                if step % val_step == 0 or step == 950001:
+                if step % val_step == 0: # or step == 950001
                     model.eval()
                     evaluate(model, step, configs, val_logger, vocoder)
                     evaluate(model, step, configs, val_logger, vocoder, pred_prosody=False)
