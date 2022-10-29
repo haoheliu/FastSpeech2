@@ -168,6 +168,7 @@ class FastSpeech2(nn.Module):
         self.target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
         self.class_num = preprocess_config["class_num"]
         self.mel_bins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
+        self.cutoff_bins = model_config["cutoff"]
         
         self.speaker_emb = None
         
@@ -195,13 +196,21 @@ class FastSpeech2(nn.Module):
         # valid_tokens = nn.MaxPool1d(8, stride=8)(valid_tokens.float()).int()
         return valid_tokens
     
+    def cutoff(self, mel):
+        if(self.cutoff_bins >= mel.size(2)):
+            return None # No need for cutting off
+        min_val = torch.min(mel)
+        cutoff_mel = mel.clone()
+        cutoff_mel[:,:,self.cutoff_bins:] = min_val
+        return cutoff_mel
+    
     def forward(
         self,
         mels,
         speakers, # (16,) The speaker id for each one in a batch, 
         gen=False
     ):  
-        # low_bandwidth_mel = torch.randn_like(mels).to(mels.device)
+        low_bandwidth_mel = self.cutoff(mels)
         
         label_emb = self.label_proj(speakers)
         label_emb = label_emb.unsqueeze(1).expand(
@@ -210,10 +219,10 @@ class FastSpeech2(nn.Module):
         
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(None, mels, g=label_emb, gen=False).mean() 
+            diff_loss = self.diff(low_bandwidth_mel, mels, g=label_emb, gen=False).mean() 
             postnet_output = mels
         else:
-            diff_output = self.diff(None, mels, g=label_emb, gen=True)
+            diff_output = self.diff(low_bandwidth_mel, mels, g=label_emb, gen=True)
             postnet_output = diff_output
             diff_loss = None
         
@@ -246,8 +255,10 @@ class DiffusionDecoder(nn.Module):
 
   def marginal_prob(self, mu, x, t):
     log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    # mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu # remove mu
-    mean = torch.exp(log_mean_coeff[:, None, None]) * x
+    if(mu is not None):
+        mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu # remove mu
+    else:  
+        mean = torch.exp(log_mean_coeff[:, None, None]) * x
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 
@@ -278,8 +289,10 @@ class DiffusionDecoder(nn.Module):
       return loss
     else:
       with torch.no_grad():
-        # y_T = torch.randn_like(mu) + mu # remove mu
-        y_T = torch.randn_like(y) 
+        if(mu is not None):
+          y_T = torch.randn_like(y) + mu # remove mu
+        else:
+          y_T = torch.randn_like(y) 
         y_t_plus_one = y_T
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
@@ -295,8 +308,12 @@ class DiffusionDecoder(nn.Module):
                 x = torch.stack([y_t_plus_one, mu, g], 1)
             else:
                 x = torch.stack([y_t_plus_one, mu], 1)
+          
           grad = self.unet(x, t)
-          # y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
-          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)
+          
+          if(mu is not None):
+              y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
+          else:
+              y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)
           y_t_plus_one = y_t
       return y_t

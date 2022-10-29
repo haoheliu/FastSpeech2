@@ -121,7 +121,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=0,
+            num_workers=12,
             # worker_init_fn=seed_worker,
             generator=g,
             pin_memory=True
@@ -141,7 +141,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=0,
+            num_workers=12,
             # worker_init_fn=seed_worker,
             generator=g,
             pin_memory=True

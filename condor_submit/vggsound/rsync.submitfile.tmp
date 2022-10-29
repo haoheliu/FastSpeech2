@@ -1,0 +1,33 @@
+####################
+#
+# Example data copy job for HTCondor
+#
+####################
+
+# --------------------------------------------
+# Executable and its arguments
+executable    = /usr/bin/rsync
+arguments     = -a -v --exclude-from=/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/.rsyncignore  /mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/ /mnt/fast/nobackup/scratch4weeks/hl01486/project/tmp/fs2_vggsound_30_10_2022_00_43/
+
+# --------------------------------------------
+# Input, Output and Log files
+log    = condor_file_log/c$(cluster).p$(process).log
+output = condor_file_log/c$(cluster).p$(process).out
+error  = condor_file_log/c$(cluster).p$(process).error
+batch_name="file_transfer"
+# -------------------------------------
+# Requirements for the Job
+
+# --------------------------------------
+# Resource requirements
+# request_GPUs     = 1
+request_CPUs     = 1
+request_memory = 4096
+# +GPUMem = 1024
+
++CanCheckpoint = true
++JobRunTime = 48
+
+# -----------------------------------
+# Queue commands
+queue 1

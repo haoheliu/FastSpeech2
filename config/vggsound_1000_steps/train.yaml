@@ -1,7 +1,7 @@
 path:
-  ckpt_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/ckpt/1_basic"
-  log_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/log/1_basic"
-  result_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/result/1_basic"
+  ckpt_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/ckpt/2_vggsound_1000_steps"
+  log_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/log/2_vggsound_1000_steps"
+  result_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/result/2_vggsound_1000_steps"
 
   # ckpt_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/ckpt/test"
   # log_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/log/test"
@@ -31,4 +31,3 @@ step:
 augmentation:
   mixup: 0.0
   balanced_sampling: True
-  cutoff: 64

@@ -31,8 +31,8 @@ variance_embedding:
 multi_speaker: True
 
 max_seq_len: 1000
-N_diff_steps: 100
-cutoff: 64
+N_diff_steps: 1000
+cutoff: 10
 
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
