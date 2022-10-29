@@ -18,7 +18,16 @@ def get_model(args, configs, device, train=False):
             "{}.pth.tar".format(args.restore_step),
         )
         ckpt = torch.load(ckpt_path)
-        model.load_state_dict(ckpt["model"])
+        state_dict = ckpt["model"]
+        new_state_dict = {}
+        for k in state_dict.keys():
+            if("module." in k):
+                new_k = k[7:]
+                new_state_dict[new_k] = state_dict[k]
+            else:
+                new_state_dict[k] = state_dict[k]
+                
+        model.load_state_dict(new_state_dict)
 
     if train:
         scheduled_optim = ScheduledOptim(

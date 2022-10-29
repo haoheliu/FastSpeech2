@@ -104,7 +104,7 @@ class Dataset(Dataset):
         if filename2 == None:
             waveform, sr = librosa.load(filename, sr=None, mono=True)
             waveform = self.resample(waveform, sr)
-            # waveform = waveform - np.mean(waveform)
+            waveform = waveform - np.mean(waveform)
         # mixup
         else:
             waveform1, sr = librosa.load(filename, sr=None, mono=True)
@@ -135,9 +135,23 @@ class Dataset(Dataset):
             waveform = mix_waveform - np.mean(mix_waveform)
             waveform=waveform[0,...]
 
+        waveform = waveform[None,...]
+        waveform_length = int(self.preprocess_config["preprocessing"]["mel"]["target_length"] * self.preprocess_config["preprocessing"]["stft"]["hop_length"])
+        
+        if waveform_length > waveform.shape[1]:
+            # padding
+            temp_wav = np.zeros((1, waveform_length))
+            temp_wav[:, :waveform.shape[1]] = waveform
+            waveform = temp_wav
+        else:
+            # cutting
+            waveform = waveform[:, :waveform_length]
+        waveform = waveform[0,...]          
+        
         # waveform = waveform / np.max(np.abs(waveform))
-        # fbank = torchaudio.compliance.kaldi.fbank(waveform, htk_compat=True, sample_frequency=sr, use_energy=False,
-        #                                           window_type='hanning', num_mel_bins=self.melbins, dither=0.0, frame_shift=10)
+        # fbank = torchaudio.compliance.kaldi.fbank(waveform, htk_compat=True, sample_frequency=16000, use_energy=False,
+        #                                           window_type='hanning', num_mel_bins=64, dither=0.0, frame_shift=10)
+        
         fbank, energy = Audio.tools.get_mel_from_wav(waveform, self.STFT)
         fbank = torch.FloatTensor(fbank.T)
         
@@ -155,9 +169,9 @@ class Dataset(Dataset):
         # fbank = fbank.permute
         
         if filename2 == None:
-            return fbank, 0
+            return fbank, 0, waveform
         else:
-            return fbank, mix_lambda
+            return fbank, mix_lambda, waveform
 
     def __getitem__(self, index):
         """
@@ -176,7 +190,7 @@ class Dataset(Dataset):
             mix_sample_idx = random.randint(0, len(self.data)-1)
             mix_datum = self.data[mix_sample_idx]
             # get the mixed fbank
-            fbank, mix_lambda = self._wav2fbank(datum['wav'], mix_datum['wav'])
+            fbank, mix_lambda, waveform = self._wav2fbank(datum['wav'], mix_datum['wav'])
             # initialize the label
             label_indices = np.zeros(self.label_num)
             # add sample 1 labels
@@ -190,7 +204,7 @@ class Dataset(Dataset):
         else:
             datum = self.data[index]
             label_indices = np.zeros(self.label_num)
-            fbank, mix_lambda = self._wav2fbank(datum['wav'])
+            fbank, mix_lambda, waveform = self._wav2fbank(datum['wav'])
             for label_str in datum['labels'].split(','):
                 label_indices[int(self.index_dict[label_str])] = 1.0
 
@@ -222,7 +236,7 @@ class Dataset(Dataset):
             fbank = torch.roll(fbank, np.random.randint(-10, 10), 0)
 
         # the output fbank shape is [time_frame_num, frequency_bins], e.g., [1024, 128]
-        return fbank, label_indices
+        return fbank, label_indices, datum['wav'], waveform
 
     def __len__(self):
         return len(self.data)

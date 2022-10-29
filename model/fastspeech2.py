@@ -170,30 +170,8 @@ class FastSpeech2(nn.Module):
         self.mel_bins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
         
         self.speaker_emb = None
-        # if model_config["multi_speaker"]:
-        #     with open(
-        #         os.path.join(
-        #             preprocess_config["path"]["preprocessed_path"], "speakers.json"
-        #         ),
-        #         "r",
-        #     ) as f:
-        #         n_speaker = len(json.load(f)) + 1 # Add silence tokens
-        #     self.speaker_emb = nn.Embedding(
-        #         n_speaker,
-        #         model_config["transformer"]["encoder_hidden"],
-        #     )
         
         self.diff = DiffusionDecoder(unet_in_channels=2, N=model_config["N_diff_steps"])
-        # self.diff_speaker_embedding = nn.Embedding(
-        #         self.class_num,
-        #         preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
-        #     )
-        
-        # self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
-        
-        # self.proj_pitch = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
-        # self.proj_energy = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
-        
         
         self.label_proj = nn.Sequential(
           nn.Linear(self.class_num, 1024),
@@ -232,10 +210,10 @@ class FastSpeech2(nn.Module):
         
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(None, mels, g=label_emb, gen=False).mean() # TODO detach here
+            diff_loss = self.diff(None, mels, g=label_emb, gen=False).mean() 
             postnet_output = mels
         else:
-            diff_output = self.diff(None, mels, g=label_emb, gen=True) # TODO detach here
+            diff_output = self.diff(None, mels, g=label_emb, gen=True)
             postnet_output = diff_output
             diff_loss = None
         

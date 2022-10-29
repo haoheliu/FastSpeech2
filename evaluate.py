@@ -15,7 +15,7 @@ from dataset import Dataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True):
+def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True, num2label={}):
     preprocess_config, model_config, train_config = configs
 
     fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
@@ -41,7 +41,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True)
 
     # Evaluation
     for batchs in loader:
-        fbank, labels = batchs 
+        fbank, labels, fnames, waveform = batchs 
         fbank = fbank.to(device)
         labels = labels.to(device)
         fbank = normalize(fbank)
@@ -54,6 +54,8 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True)
     
     if logger is not None:
         for i in range(fbank.size(0)):
+            label = int(torch.where(labels[i] == 1)[0][0])
+            label = num2label[label]
             func = synth_one_sample    
             fig, wav_reconstruction, wav_prediction = func(
                 denormalize(fbank[i]),
@@ -67,20 +69,28 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True)
             log(
                 logger,
                 fig=fig,
-                tag="Validation/step_{}_{}".format(step, i),
+                tag="Validation/step_{}_{}_{}".format(step,label, i),
             )
+
             sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+            
+            log(
+                    logger,
+                    audio=waveform[i],
+                    sampling_rate=sampling_rate,
+                    tag="Training/step_{}_{}_{}_original".format(step, label, i),
+            )
             log(
                 logger,
                 audio=wav_reconstruction,
                 sampling_rate=sampling_rate,
-                tag="Validation/step_{}_reconstructed_{}".format(step, i),
+                tag="Validation/step_{}_{}_reconstructed_{}".format(step, label, i),
             )
             log(
                 logger,
                 audio=wav_prediction,
                 sampling_rate=sampling_rate,
-                tag="Validation/step_{}_synthesized_{}".format(step, i),
+                tag="Validation/step_{}_{}_synthesized_{}".format(step, label, i),
             )
 
     # return message
