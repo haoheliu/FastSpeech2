@@ -18,82 +18,70 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True):
     preprocess_config, model_config, train_config = configs
 
+    fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
+    fbank_std = preprocess_config["preprocessing"]["mel"]["std"]
+    
+    def normalize(x):
+        return (x-fbank_mean)/fbank_std
+
+    def denormalize(x):
+        return x * fbank_std + fbank_mean
+    
     # Get dataset
     dataset = Dataset(
-        "val.txt", preprocess_config, train_config, sort=False, drop_last=False
+        preprocess_config, train_config, train=False
     )
+    
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
         dataset,
-        batch_size=1,
+        batch_size=batch_size,
         shuffle=True,
-        collate_fn=dataset.collate_fn,
     )
 
-    # Get loss function
-    Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
-
     # Evaluation
-    loss_sums = [0 for _ in range(6)]
-    idx = 0
     for batchs in loader:
-        if(idx > 2): break # Run only one sample
-        for batch in batchs: 
-            idx += 1
-            # Remove the target pitch and energy
-            batch = to_device(batch, device)
-
-            if(pred_prosody):
-                batch = list(batch)
-                batch[9] = None
-                batch[10] = None
-                batch = tuple(batch)
-            
-            with torch.no_grad():
-                # Forward
-                output, _ = model(*(batch[2:]), gen=True)
-
-                # Cal Loss
-                # losses,_ = Loss(batch, output)
-
-                # for i in range(len(losses)):
-                #     loss_sums[i] += losses[i].item() * len(batch[0])
-
-    # loss_means = [loss_sum / len(dataset) for loss_sum in loss_sums]
-
-    # message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
-    #     *([step] + [l for l in loss_means])
-    # )
-
+        fbank, labels = batchs 
+        fbank = fbank.to(device)
+        labels = labels.to(device)
+        fbank = normalize(fbank)
+        
+        with torch.no_grad():
+            # Forward
+            diff_loss, generated, _ = model(fbank, labels, gen=True)
+        generated = denormalize(generated)
+        break
+    
     if logger is not None:
-
-        func = synth_one_sample_val if(pred_prosody) else synth_one_sample    
-        fig, wav_reconstruction, wav_prediction, tag = func(
-            batch,
-            output,
-            vocoder,
-            model_config,
-            preprocess_config,
-        )
-        log(logger, step)
-        log(
-            logger,
-            fig=fig,
-            tag="Validation/step_{}_{}_{}".format(step, tag, pred_prosody),
-        )
-        sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
-        log(
-            logger,
-            audio=wav_reconstruction,
-            sampling_rate=sampling_rate,
-            tag="Validation/step_{}_{}_reconstructed_{}".format(step, tag, pred_prosody),
-        )
-        log(
-            logger,
-            audio=wav_prediction,
-            sampling_rate=sampling_rate,
-            tag="Validation/step_{}_{}_synthesized_{}".format(step, tag, pred_prosody),
-        )
+        for i in range(fbank.size(0)):
+            func = synth_one_sample    
+            fig, wav_reconstruction, wav_prediction = func(
+                denormalize(fbank[i]),
+                denormalize(generated[i]),
+                labels[i],
+                vocoder,
+                model_config,
+                preprocess_config,
+            )
+            log(logger, step)
+            log(
+                logger,
+                fig=fig,
+                tag="Validation/step_{}_{}".format(step, i),
+            )
+            sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+            log(
+                logger,
+                audio=wav_reconstruction,
+                sampling_rate=sampling_rate,
+                tag="Validation/step_{}_reconstructed_{}".format(step, i),
+            )
+            log(
+                logger,
+                audio=wav_prediction,
+                sampling_rate=sampling_rate,
+                tag="Validation/step_{}_synthesized_{}".format(step, i),
+            )
 
     # return message
 

@@ -64,7 +64,6 @@ def to_device(data, device):
 
         return (ids, raw_texts, speakers, texts, src_lens, max_src_len)
 
-
 def log(
     logger, step=None, fig=None, audio=None, sampling_rate=22050, tag=""
 ):
@@ -87,9 +86,10 @@ def log(
         logger.add_figure(tag, fig)
 
     if audio is not None:
+        audio = audio / (max(abs(audio)) * 1.1)
         logger.add_audio(
             tag,
-            audio / max(abs(audio)),
+            audio,
             sample_rate=sampling_rate,
         )
 
@@ -178,63 +178,25 @@ def synth_one_sample_val(targets, predictions, vocoder, model_config, preprocess
 
     return fig, wav_reconstruction, wav_prediction, basename
 
-def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config):
-    index = np.random.choice(list(np.arange(targets[6].size(0))))
-    
-    basename = targets[0][index]
-    src_len = predictions[8][index].item()
-    mel_len = predictions[9][index].item()
-    mel_target = targets[6][index, :mel_len].detach().transpose(0, 1)
-
-    mel_prediction = predictions[0][index, :mel_len].detach().transpose(0, 1)
-    postnet_mel_prediction = predictions[1][index, :mel_len].detach().transpose(0, 1)
-        
-    duration = targets[11][index, :src_len].detach().cpu().numpy()
-    if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
-        pitch = targets[9][index, :src_len].detach().cpu().numpy()
-        pitch = expand(pitch, duration)
-    else:
-        pitch = targets[9][index, :mel_len].detach().cpu().numpy()
-
-    if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
-        energy = targets[10][index, :src_len].detach().cpu().numpy()
-        energy = expand(energy, duration)
-    else:
-        energy = targets[10][index, :mel_len].detach().cpu().numpy()
-
-    with open(
-        os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
-    ) as f: 
-        stats = json.load(f)
-        stats = stats["pitch"] + stats["energy"][:2]
-        
-    # from datetime import datetime
-    # now = datetime.now()
-    # current_time = now.strftime("%D:%H:%M:%S")
-    # np.save(("mel_pred_%s.npy" % current_time).replace("/","-"), mel_prediction.cpu().numpy())
-    # np.save(("postnet_mel_prediction_%s.npy" % current_time).replace("/","-"), postnet_mel_prediction.cpu().numpy())
-    # np.save(("mel_target_%s.npy" % current_time).replace("/","-"), mel_target.cpu().numpy())
+def synth_one_sample(mel_input, mel_prediction, labels, vocoder, model_config, preprocess_config):
     
     fig = plot_mel(
         [
-            (mel_prediction.cpu().numpy(), pitch, energy),
-            (postnet_mel_prediction.cpu().numpy(), pitch, energy),
-            (mel_target.cpu().numpy(), pitch, energy),
+            (mel_prediction.cpu().numpy()),
+            (mel_input.cpu().numpy()),
         ],
-        stats,
-        ["Raw mel spectrogram prediction", "Postnet mel prediction", "Ground-Truth Spectrogram"],
+        ["predict mel spectrogram prediction", "original mel prediction"],
     )
-
     if vocoder is not None:
         from .model import vocoder_infer
         wav_reconstruction = vocoder_infer(
-            mel_target.unsqueeze(0),
+            mel_input.unsqueeze(0).permute(0,2,1),
             vocoder,
             model_config,
             preprocess_config,
         )[0]
         wav_prediction = vocoder_infer(
-            postnet_mel_prediction.unsqueeze(0),
+            mel_prediction.unsqueeze(0).permute(0,2,1),
             vocoder,
             model_config,
             preprocess_config,
@@ -242,7 +204,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
     else:
         wav_reconstruction = wav_prediction = None
 
-    return fig, wav_reconstruction, wav_prediction, basename
+    return fig, wav_reconstruction, wav_prediction
 
 
 def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
@@ -299,54 +261,19 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
         wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
 
 
-def plot_mel(data, stats, titles):
+def plot_mel(data, titles=None):
     fig, axes = plt.subplots(len(data), 1, squeeze=False)
     if titles is None:
         titles = [None for i in range(len(data))]
-    pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
-    pitch_min = pitch_min * pitch_std + pitch_mean
-    pitch_max = pitch_max * pitch_std + pitch_mean
-
-    def add_axis(fig, old_ax):
-        ax = fig.add_axes(old_ax.get_position(), anchor="W")
-        ax.set_facecolor("None")
-        return ax
 
     for i in range(len(data)):
-        mel, pitch, energy = data[i]
-        pitch = pitch * pitch_std + pitch_mean
-        axes[i][0].imshow(mel, origin="lower")
+        mel= data[i]
+        axes[i][0].imshow(mel, origin="lower", aspect="auto")
         axes[i][0].set_aspect(2.5, adjustable="box")
         axes[i][0].set_ylim(0, mel.shape[0])
         axes[i][0].set_title(titles[i], fontsize="medium")
         axes[i][0].tick_params(labelsize="x-small", left=False, labelleft=False)
         axes[i][0].set_anchor("W")
-
-        ax1 = add_axis(fig, axes[i][0])
-        ax1.plot(pitch, color="tomato")
-        ax1.set_xlim(0, mel.shape[1])
-        ax1.set_ylim(0, pitch_max)
-        ax1.set_ylabel("F0", color="tomato")
-        ax1.tick_params(
-            labelsize="x-small", colors="tomato", bottom=False, labelbottom=False
-        )
-        
-        ax2 = add_axis(fig, axes[i][0])
-        ax2.plot(energy, color="darkviolet")
-        ax2.set_xlim(0, mel.shape[1])
-        ax2.set_ylim(energy_min, energy_max)
-        ax2.set_ylabel("Energy", color="darkviolet")
-        ax2.yaxis.set_label_position("right")
-        ax2.tick_params(
-            labelsize="x-small",
-            colors="darkviolet",
-            bottom=False,
-            labelbottom=False,
-            left=False,
-            labelleft=False,
-            right=True,
-            labelright=True,
-        )
 
     return fig
 

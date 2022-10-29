@@ -1,0 +1,26 @@
+path:
+  ckpt_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/ckpt/test"
+  log_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/log/test"
+  result_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k/v1/result/test"
+
+  wav_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/vggsound_32k"
+
+optimizer:
+  batch_size: 4
+  betas: [0.9, 0.98]
+  eps: 0.000000001
+  weight_decay: 0.0
+  grad_clip_thresh: 1.0
+  grad_acc_step: 2
+  warm_up_step: 4000
+  anneal_steps: [300000, 400000, 500000]
+  anneal_rate: 0.3
+step:
+  total_step: 1800000
+  log_step: 10
+  synth_step: 1
+  val_step: 1
+  save_step: 100
+
+augmentation:
+  mixup: 0.0

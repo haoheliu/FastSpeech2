@@ -15,6 +15,7 @@ from dataset import Dataset
 from evaluate import evaluate
 import math
 
+# FBANK=None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def mle_lossfunc(z, m, logs, logdet, mask):
@@ -35,28 +36,37 @@ def main(args, configs):
 
     preprocess_config, model_config, train_config = configs
     ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
+    fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
+    fbank_std = preprocess_config["preprocessing"]["mel"]["std"]
+    
+    def normalize(x):
+        return (x-fbank_mean)/fbank_std
+
+    def denormalize(x):
+        return x * fbank_std + fbank_mean
+    
     if(os.path.exists(ckpt_path) and len(os.listdir(ckpt_path)) > 0):
         args.restore_step = get_restore_step(ckpt_path)
         
     # Get dataset
     dataset = Dataset(
-        "train.txt", preprocess_config, train_config, sort=True, drop_last=True
+        preprocess_config, train_config, train=True
     )
+    
     batch_size = train_config["optimizer"]["batch_size"]
-    group_size = 4  # Set this larger than 1 to enable sorting in Dataset
-    assert batch_size * group_size < len(dataset)
     loader = DataLoader(
         dataset,
-        batch_size=batch_size * group_size,
+        batch_size=batch_size,
         shuffle=True,
-        collate_fn=dataset.collate_fn
+        # collate_fn=dataset.collate_fn
     )
-    disc, opt_d = get_discriminator(args, configs, device, train=True)
+    
+    # disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
     model, optimizer = get_model(args, configs, device, train=True)
     
     num_param = get_param_num(model)
-    Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
+    # Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
     print("Number of FastSpeech2 Parameters:", num_param)
 
     # Load vocoder 
@@ -88,49 +98,54 @@ def main(args, configs):
     outer_bar.update()
 
     while True:
-        inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
-        # import ipdb; ipdb.set_trace()
         for batchs in loader:
-            for batch in batchs:
-                batch = to_device(batch, device)
+            # fbank: [4, 1000, 80], labels: [4, 309]
+            fbank, labels = batchs[0], batchs[1] 
+            fbank = fbank.to(device)
+            labels = labels.to(device)
+            fbank = normalize(fbank)
+            
+            # if(FBANK is None):
+            #     FBANK = fbank.flatten()
+            # else:
+            #     FBANK = torch.cat([FBANK, fbank.flatten()])
+            # print(torch.mean(FBANK), torch.std(FBANK))
+            
+            # Forward
+            diff_loss, _, _ = model(fbank, labels, gen=False)
+            
+            total_loss = diff_loss / grad_acc_step
+            total_loss.backward()
+            
+            if step % grad_acc_step == 0:
+                # Clipping gradients to avoid gradient explosion
+                nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                optimizer.step_and_update_lr()
+                optimizer.zero_grad()
+                
+            if step % log_step == 0:
+                message1 = "Step {}/{}, ".format(step, total_step)
+                message2 = "Diff Loss: {:.4f}".format(
+                    diff_loss
+                )
 
-                # Forward
-                output, (z,m,logs,logdet,mel_masks, diff_loss, diff_output) = model(*(batch[2:]), gen=False)
-                
-                losses, _ = Loss(batch, output)
-                total_loss,mel_loss, postnet_mel_loss, pitch_loss, energy_loss, duration_loss = losses
-                
-                total_loss =  diff_loss + pitch_loss + energy_loss 
-                total_loss = total_loss / grad_acc_step
-                total_loss.backward()
-                
-                if step % grad_acc_step == 0:
-                    # Clipping gradients to avoid gradient explosion
-                    nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
-                    # Update weights
-                    optimizer.step_and_update_lr()
-                    optimizer.zero_grad()
+                with open(os.path.join(train_log_path, "log.txt"), "a") as f:
+                    f.write(message1 + message2 + "\n")
+
+                outer_bar.write(message1 + message2)
+                log(train_logger, step)
+
+            if step % synth_step == 0:
+                with torch.no_grad():
+                    model.eval()
+                    diff_loss, generated, _ = model(fbank, labels, gen=True)
+                model.train()
+                for i in range(fbank.size(0)):
                     
-                if step % log_step == 0:
-                    message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Diff Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}".format(
-                        diff_loss, pitch_loss, energy_loss
-                    )
-
-                    with open(os.path.join(train_log_path, "log.txt"), "a") as f:
-                        f.write(message1 + message2 + "\n")
-
-                    outer_bar.write(message1 + message2)
-                    log(train_logger, step)
-
-                if step % synth_step == 0 or step == 950001:
-                    with torch.no_grad():
-                        model.eval()
-                        output, _ = model(*(batch[2:]), gen=True)
-                    model.train()
-                    fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
-                        batch,
-                        output,
+                    fig, wav_reconstruction, wav_prediction = synth_one_sample(
+                        denormalize(fbank[i]),
+                        denormalize(generated[i]),
+                        labels[i],
                         vocoder,
                         model_config,
                         preprocess_config,
@@ -138,7 +153,7 @@ def main(args, configs):
                     log(
                         train_logger,
                         fig=fig,
-                        tag="Training/step_{}_{}".format(step, tag),
+                        tag="Training/step_{}_{}".format(step, i),
                     )
                     sampling_rate = preprocess_config["preprocessing"]["audio"][
                         "sampling_rate"
@@ -147,44 +162,38 @@ def main(args, configs):
                         train_logger,
                         audio=wav_reconstruction,
                         sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_reconstructed".format(step, tag),
+                        tag="Training/step_{}_{}_reconstructed".format(step, i),
                     )
                     log(
                         train_logger,
                         audio=wav_prediction,
                         sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_synthesized".format(step, tag),
+                        tag="Training/step_{}_{}_synthesized".format(step, i),
                     )
 
-                if step % val_step == 0 or step == 950001:
-                    model.eval()
-                    evaluate(model, step, configs, val_logger, vocoder)
-                    evaluate(model, step, configs, val_logger, vocoder, pred_prosody=False)
-                    # with open(os.path.join(val_log_path, "log.txt"), "a") as f:
-                    #     f.write(message + "\n")
-                    # outer_bar.write(message)
-                    model.train()
+            if step % val_step == 0:
+                model.eval()
+                evaluate(model, step, configs, val_logger, vocoder)
+                # evaluate(model, step, configs, val_logger, vocoder, pred_prosody=False)
+                model.train()
 
-                if step % save_step == 0:
-                    path = os.path.join(train_config["path"]["ckpt_path"], "{}.pth.tar".format(step))
-                    print("save checkpoint at", path)
-                    torch.save(
-                        {
-                            "model": model.state_dict(),
-                            "disc": disc.state_dict(),
-                            "optimizer": optimizer._optimizer.state_dict(),
-                            "opt_d": opt_d._optimizer.state_dict(),
-                        },
-                        path
-                    )
+            if step % save_step == 0:
+                path = os.path.join(train_config["path"]["ckpt_path"], "{}.pth.tar".format(step))
+                print("save checkpoint at", path)
+                torch.save(
+                    {
+                        "model": model.state_dict(),
+                        # "disc": disc.state_dict(),
+                        "optimizer": optimizer._optimizer.state_dict(),
+                        # "opt_d": opt_d._optimizer.state_dict(),
+                    },
+                    path
+                )
 
-                if step == total_step:
-                    quit()
-                step += 1
-                outer_bar.update(1)
-
-            inner_bar.update(1)
-        epoch += 1
+            if step == total_step:
+                quit()
+            step += 1
+            outer_bar.update(1)
 
 
 if __name__ == "__main__":

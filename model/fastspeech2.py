@@ -124,12 +124,14 @@ class FlowSpecDecoder(nn.Module):
         attentions.CouplingBlock(
           in_channels * n_sqz,
           hidden_channels,
-          kernel_size=kernel_size, 
+          kernel_size=kernel_size,  
           dilation_rate=dilation_rate,
           n_layers=n_layers,
           gin_channels=gin_channels,
           p_dropout=p_dropout,
-          sigmoid_scale=sigmoid_scale))
+          sigmoid_scale=sigmoid_scale
+        )
+      )
 
   def forward(self, x, x_mask, g=None, reverse=False):
     if not reverse:
@@ -161,37 +163,43 @@ class FastSpeech2(nn.Module):
     def __init__(self, preprocess_config, model_config):
         super(FastSpeech2, self).__init__()
         self.model_config = model_config
-        if(preprocess_config['dataset'] == 'us8k'):
-          n_src_vocab = 10 + 1 # TODO hard code here on symbol numbers
-        elif(preprocess_config['dataset'] == 'esc50'):
-          n_src_vocab = 50 + 1 
-          
-        d_word_vec = model_config["transformer"]["encoder_hidden"]
-      
+        self.preprocess_config = preprocess_config
+        
+        self.target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
+        self.class_num = preprocess_config["class_num"]
+        self.mel_bins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
+        
         self.speaker_emb = None
-        if model_config["multi_speaker"]:
-            with open(
-                os.path.join(
-                    preprocess_config["path"]["preprocessed_path"], "speakers.json"
-                ),
-                "r",
-            ) as f:
-                n_speaker = len(json.load(f)) + 1 # Add silence tokens
-            self.speaker_emb = nn.Embedding(
-                n_speaker,
-                model_config["transformer"]["encoder_hidden"],
-            )
+        # if model_config["multi_speaker"]:
+        #     with open(
+        #         os.path.join(
+        #             preprocess_config["path"]["preprocessed_path"], "speakers.json"
+        #         ),
+        #         "r",
+        #     ) as f:
+        #         n_speaker = len(json.load(f)) + 1 # Add silence tokens
+        #     self.speaker_emb = nn.Embedding(
+        #         n_speaker,
+        #         model_config["transformer"]["encoder_hidden"],
+        #     )
         
-        self.diff = DiffusionDecoder(unet_in_channels=4)
-        self.diff_speaker_embedding = nn.Embedding(
-                n_speaker,
-                preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
-            )
+        self.diff = DiffusionDecoder(unet_in_channels=2, N=model_config["N_diff_steps"])
+        # self.diff_speaker_embedding = nn.Embedding(
+        #         self.class_num,
+        #         preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
+        #     )
         
-        self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
+        # self.energy_adaptor = EnergyAdaptor(preprocess_config, model_config)
         
         # self.proj_pitch = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
         # self.proj_energy = nn.Linear(model_config["transformer"]["encoder_hidden"], preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
+        
+        
+        self.label_proj = nn.Sequential(
+          nn.Linear(self.class_num, 1024),
+          nn.LeakyReLU(inplace=True),
+          nn.Linear(1024, self.mel_bins)
+        )
         
     def build_frame_energy_mask(self, logmels):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
@@ -211,93 +219,28 @@ class FastSpeech2(nn.Module):
     
     def forward(
         self,
+        mels,
         speakers, # (16,) The speaker id for each one in a batch, 
-        texts, # (16,117), (batch_size, max_src_len) 
-        src_lens, # (16,) The length of each one
-        max_src_len, # 117, int
-        mels=None, # (16, 845, 80)
-        mel_lens=None, # (16,)
-        max_mel_len=None, # 845, int
-        p_targets=None,
-        e_targets=None,
-        d_targets=None,
-        p_control=1.0,
-        e_control=1.0,
-        d_control=1.0,
         gen=False
-    ):
-      
-        if(mel_lens is None):
-          mel_lens = src_lens
-          max_mel_len = max_src_len
-
-        mel_masks = (
-            get_mask_from_lengths(mel_lens, max_mel_len)
-            if mel_lens is not None
-            else None
-        )
+    ):  
+        # low_bandwidth_mel = torch.randn_like(mels).to(mels.device)
         
-        # tokens_emb = mels.clone()
-        # tokens_emb[...,32:] = tokens_emb[...,32:] * 0 - 6
-        tokens_emb = None
-        
-        if self.speaker_emb is not None:
-            g_diff = self.diff_speaker_embedding(speakers)
-            g_diff = g_diff.unsqueeze(1).expand(
-                g_diff.size(0), max_mel_len, g_diff.size(1)
-            )
-        else: 
-            g=None
-            
-        (
-            _,
-            p_predictions,
-            e_predictions,
-            log_d_predictions,
-            d_rounded,
-            _,
-            mel_masks,
-            energy_embedding,
-            pitch_embedding
-        ) = self.energy_adaptor(
-            g_diff,
-            mel_masks,
-            mel_masks,
-            max_mel_len,
-            p_targets,
-            e_targets,
-            d_targets,
-            p_control,
-            e_control,
-            d_control,
+        label_emb = self.label_proj(speakers)
+        label_emb = label_emb.unsqueeze(1).expand(
+            label_emb.size(0), self.target_length, label_emb.size(1)
         )
         
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(tokens_emb, mels, (energy_embedding, pitch_embedding), g=g_diff, gen=False).mean() # TODO detach here
+            diff_loss = self.diff(None, mels, g=label_emb, gen=False).mean() # TODO detach here
             postnet_output = mels
         else:
-            diff_output = self.diff(tokens_emb, mels, (energy_embedding, pitch_embedding), g=g_diff, gen=True) # TODO detach here
+            diff_output = self.diff(None, mels, g=label_emb, gen=True) # TODO detach here
             postnet_output = diff_output
             diff_loss = None
+        
+        return diff_loss, postnet_output, mels
             
-        log_d_predictions = None
-        d_rounded = None
-        
-        return (
-            mels,
-            postnet_output,
-            p_predictions,
-            e_predictions,
-            log_d_predictions,
-            d_rounded,
-            mel_masks,
-            mel_masks,
-            src_lens,
-            mel_lens,
-        ), (None, None, None, None, mel_masks, diff_loss, diff_output)
-        
-        
 class DiffusionDecoder(nn.Module):
   def __init__(self, 
       n_speaker = 50,
@@ -330,52 +273,50 @@ class DiffusionDecoder(nn.Module):
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 
-  def cal_loss(self, x, mu, t, z, std, emb, g=None):
-    energy_embedding, pitch_embedding = emb
+  def cal_loss(self, x, mu, t, z, std, g=None):
     time_steps = t * (self.N - 1)
     if(mu is None):
       if g is not None:
-          x = torch.stack([x, g, energy_embedding, pitch_embedding], 1)
+          x = torch.stack([x, g], 1)
       else:
-          x = torch.stack([x, energy_embedding, pitch_embedding], 1)
+          x = torch.stack([x], 1)
     else:
       if g is not None:
-          x = torch.stack([x, mu, g, energy_embedding, pitch_embedding], 1)
+          x = torch.stack([x, mu, g], 1)
       else:
-          x = torch.stack([x, mu, energy_embedding, pitch_embedding], 1)
+          x = torch.stack([x, mu], 1)
     
     grad = self.unet(x, time_steps)
     loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
     return loss
 
-  def forward(self, mu, y=None, embeddings=None, g=None, gen=False):
-    (energy_embedding, pitch_embedding) = embeddings
+  def forward(self, mu, y=None, g=None, gen=False):
     if not gen:
       t = torch.FloatTensor(y.shape[0]).uniform_(0, self.T-self.delta_t).to(y.device)+self.delta_t  # sample a random t
       mean, std = self.marginal_prob(mu, y, t)
       z = torch.randn_like(y)
       x = mean + std[:, None, None] * z
-      loss = self.cal_loss(x, mu, t, z, std, embeddings, g)
+      loss = self.cal_loss(x, mu, t, z, std, g)
       return loss
     else:
       with torch.no_grad():
         # y_T = torch.randn_like(mu) + mu # remove mu
-        y_T = torch.randn_like(energy_embedding) 
+        y_T = torch.randn_like(y) 
         y_t_plus_one = y_T
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
-          t = torch.FloatTensor(1).fill_(n).to(energy_embedding.device)
+          t = torch.FloatTensor(1).fill_(n).to(y.device)
           
           if(mu is None):
             if g is not None:
-                x = torch.stack([y_t_plus_one, g, energy_embedding, pitch_embedding], 1)
+                x = torch.stack([y_t_plus_one, g], 1)
             else:
-                x = torch.stack([y_t_plus_one, energy_embedding, pitch_embedding], 1)
+                x = torch.stack([y_t_plus_one], 1)
           else:
             if g is not None:
-                x = torch.stack([y_t_plus_one, mu, g, energy_embedding, pitch_embedding], 1)
+                x = torch.stack([y_t_plus_one, mu, g], 1)
             else:
-                x = torch.stack([y_t_plus_one, mu, energy_embedding, pitch_embedding], 1)
+                x = torch.stack([y_t_plus_one, mu], 1)
           grad = self.unet(x, t)
           # y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
           y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)
