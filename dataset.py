@@ -185,18 +185,19 @@ class Dataset(Dataset):
         fbank = torch.transpose(fbank, 0, 1)
         fbank = fbank.unsqueeze(0)
         
-        fbank_with_context = self.decide_with_context_or_not()
+        # fbank_with_context = self.decide_with_context_or_not()
         
-        if(not fbank_with_context):
-            fbank = torch.randn_like(fbank).to(fbank.device) # context become random noise
-        else:
-            if(self.use_blur): 
-                fbank = self.blur(fbank)
-            if self.freqm != 0:
-                fbank = self.frequency_masking(fbank, self.freqm)
-            if self.timem != 0:
-                fbank = self.time_masking(fbank, self.timem)
-            fbank = (fbank+1e-7).log()
+        # if(not fbank_with_context):
+        #     fbank = fbank * 0.0 # Without any context information
+        # else:
+        if(self.use_blur): 
+            fbank = self.blur(fbank)
+        if self.freqm != 0:
+            fbank = self.frequency_masking(fbank, self.freqm)
+        if self.timem != 0:
+            fbank = self.time_masking(fbank, self.timem)
+        
+        fbank = (fbank+1e-7).log()
 
         fbank = fbank.squeeze(0)
         fbank = torch.transpose(fbank, 0, 1)
@@ -218,9 +219,7 @@ class Dataset(Dataset):
                 
         #########################################
         original_fbank = self.normalize(original_fbank)
-        
-        if(fbank_with_context):
-            fbank = self.normalize(fbank)
+        fbank = self.normalize(fbank)
         
         return original_fbank, fbank, label_indices, datum['wav'], seg_label
 
@@ -233,10 +232,11 @@ class Dataset(Dataset):
 
     def blur(self, fbank):
         # assert torch.min(fbank) >= 0
-        kernel_size=int(self.random_uniform(1, self.melbins // 4))
-        if(kernel_size % 2 == 0): 
-            kernel_size -= 1
-        fbank = torchvision.transforms.functional.gaussian_blur(fbank, kernel_size=[kernel_size, kernel_size])
+        F_kernel_size=int(self.random_uniform(1, self.melbins // 4))
+        
+        if(F_kernel_size % 2 == 0): F_kernel_size -= 1
+        
+        fbank = torchvision.transforms.functional.gaussian_blur(fbank, kernel_size=[F_kernel_size, F_kernel_size])
         return fbank
 
     def frequency_masking(self, fbank, freqm):

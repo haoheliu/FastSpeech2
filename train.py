@@ -26,6 +26,10 @@ from dataset import Dataset
 from evaluate import evaluate
 import math
 
+import time
+from datetime import datetime
+# current_time = date +"_"+ current_time
+
 def build_id_to_label(
     path,
 ):
@@ -195,7 +199,7 @@ def main(rank, n_gpus, args, configs):
             # fbank: [4, 1000, 80], labels: [4, 309]
             original_fbank, fbank, labels, fnames, seg_label = batchs 
             
-            if(id == 0):
+            if(id % 50 == 0):
                 for i in range(fbank.size(0)):
                     fb = fbank[i].numpy()
                     original_fb = original_fbank[i].numpy()
@@ -241,8 +245,13 @@ def main(rank, n_gpus, args, configs):
 
             if step % log_step == 0 or step < 10:
                 lr = optimizer.get_lr()
-                message1 = "Step {}/{}, ".format(step, total_step)
-                message2 = "Diff Loss: %.4f, lr %s" % (diff_loss, lr)
+                t = time.localtime()
+                date = datetime.today().strftime('%Y-%m-%d')
+                current_time = time.strftime("%H:%M:%S", t)
+                current_time = date + " " + current_time
+                
+                message1 = "{} Step {}/{}, ".format(current_time, step, total_step)
+                message2 = "%s Diff Loss: %.4f, lr %s" % (current_time, diff_loss, lr)
 
                 with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                     f.write(message1 + message2 + "\n")

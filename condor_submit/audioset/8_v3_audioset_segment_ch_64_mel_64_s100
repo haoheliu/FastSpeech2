@@ -1,0 +1,39 @@
+####################
+#
+# Example Job for HTCondor
+#
+####################
+
+# --------------------------------------------
+# Executable and its arguments
+executable    = /bin/sh
+arguments = $SH_FILE 
+log    = condor_log/c$(cluster).p$(process).log
+output = condor_log/c$(cluster).p$(process).out
+error  = condor_log/c$(cluster).p$(process).error
+batch_name=$BATCH_NAME
+
+# -----------------------------------
+# File Transfer, Input, Output
+#should_transfer_files = YES
+#transfer_input_files = catch_signal_test.py
+#when_to_transfer_output = ON_EXIT
+Environment = PYTHONIOENCODING=UTF-8
+# environment = "mount=/vol/research/"
++CanCheckpoint = False
++JobRunTime = 72
++GPUMem = 8000
+# -------------------------------------
+# Requirements for the Job
+requirements = (CUDADeviceName == "GeForce RTX 3090") || (CUDADeviceName == "NVIDIA A100-SXM4-80GB") || (CUDADeviceName == "GeForce RTX 2080 Ti")  
+
+# --------------------------------------
+# Resources
+request_GPUs     = 4
+request_CPUs     = 1
+request_memory = 128G
+# -----------------------------------
+# Queue commands
+# -----------------------------------
+queue 1
+# -----------------------------------
