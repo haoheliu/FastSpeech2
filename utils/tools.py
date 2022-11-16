@@ -185,7 +185,7 @@ def synth_one_sample(mel_input, mel_prediction, labels, vocoder, model_config, p
             (mel_prediction.permute(1,0).cpu().numpy()),
             (mel_input.permute(1,0).cpu().numpy()),
         ],
-        ["Generated mel spectrogram", "Target mel prediction"],
+        ["Generated mel spectrogram %s" % labels, "Target mel prediction"],
     )
     if vocoder is not None:
         from .model import vocoder_infer

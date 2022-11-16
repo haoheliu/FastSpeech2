@@ -41,15 +41,16 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
 
     # Evaluation
     for batchs in loader:
-        fbank, labels, fnames, waveform = batchs 
+        fbank, labels, fnames, waveform, seg_label = batchs 
         fbank = fbank.to(device)
         labels = labels.to(device)
+        seg_label = seg_label.to(device)
         fbank = normalize(fbank)
         
         with torch.no_grad():
             # Forward
-            diff_loss, generated, _ = model(fbank, labels, gen=True)
-        generated = denormalize(generated)
+            diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+            # generated = denormalize(generated)
         break
     
     if logger is not None:

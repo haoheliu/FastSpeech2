@@ -7,7 +7,7 @@
 # --------------------------------------------
 # Executable and its arguments
 executable    = /usr/bin/rsync
-arguments     = -a -v --exclude-from=/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/.rsyncignore  /mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/ /mnt/fast/nobackup/scratch4weeks/hl01486/project/tmp/fs2_vggsound_30_10_2022_00_43/
+arguments     = -a -v --exclude-from=/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/.rsyncignore  /mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/ /mnt/fast/nobackup/scratch4weeks/hl01486/project/tmp/fs2_vggsound_30_10_2022_15_29/
 
 # --------------------------------------------
 # Input, Output and Log files

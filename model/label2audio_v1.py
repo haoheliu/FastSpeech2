@@ -159,11 +159,11 @@ class FlowSpecDecoder(nn.Module):
     for f in self.flows:
       f.store_inverse()
       
-class FastSpeech2(nn.Module):
-    """ FastSpeech2 """
+class Label2Audio(nn.Module):
+    """ Label2Audio: Generate audio with the blurred and truncated spectrogram (mu) """
 
     def __init__(self, preprocess_config, model_config):
-        super(FastSpeech2, self).__init__()
+        super(Label2Audio, self).__init__()
         self.model_config = model_config
         self.preprocess_config = preprocess_config
         
@@ -174,48 +174,20 @@ class FastSpeech2(nn.Module):
         
         self.speaker_emb = None
         
-        unet_in_channel = 2 #  if (self.cutoff_bins>=self.mel_bins) else 3
+        unet_in_channel = 3 #  if (self.cutoff_bins>=self.mel_bins) else 3
         self.diff = DiffusionDecoder(unet_channels = model_config["unet_channel"],
                                      unet_in_channels=unet_in_channel, 
                                      N=model_config["N_diff_steps"])
 
         self.label_proj = nn.Sequential(
-          nn.Linear(self.class_num*2, 512),
+          nn.Linear(self.class_num, 512),
+          nn.Dropout(0.2),
           nn.LeakyReLU(inplace=True),
           nn.Linear(512, 256),
+          nn.Dropout(0.2),
           nn.LeakyReLU(inplace=True),
           nn.Linear(256, self.mel_bins)
         )
-        
-      #   self.encoder_clip = attention.Encoder(
-      #     hidden_channels=527,
-      #     output_channels=128,
-      #     filter_channels=192,
-      #     n_heads=1,
-      #     n_layers=2,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      #     )
-      
-      #   self.encoder_seg = attention.Encoder(
-      #     hidden_channels=527,
-      #     output_channels=128,
-      #     filter_channels=192,
-      #     n_heads=1,
-      #     n_layers=2,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      #     )
-      
-      #   self.encoder_final = attention.Encoder(
-      #     hidden_channels=128,
-      #     output_channels=64,
-      #     filter_channels=192,
-      #     n_heads=2,
-      #     n_layers=6,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      # )
         
     def build_frame_energy_mask(self, logmels):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
@@ -241,6 +213,11 @@ class FastSpeech2(nn.Module):
         cutoff_mel[:,:,self.cutoff_bins:] = min_val
         return cutoff_mel
     
+    def aug_mel(self, mel):
+        # Log mel spectrogram after normalizations
+        mu=mel
+        return mu
+    
     def forward(
         self,
         mels,
@@ -249,20 +226,9 @@ class FastSpeech2(nn.Module):
         gen=False,
         mu = None
     ):  
-        label_emb = speakers.unsqueeze(1).expand(
-            speakers.size(0), self.target_length, speakers.size(1)
-        )
-        seg_label_emb = torch.cat([label_emb, seg_label], dim=-1)
-        seg_label_emb = self.label_proj(seg_label_emb)
-        # seg_label = seg_label.permute(0,2,1)
-        # label_emb = label_emb.permute(0,2,1)
+        seg_label_emb = self.label_proj(seg_label)
+        # mu = self.aug_mel(mels) # Detroy the mel spectrogram as through as possible
         
-        # seg_output = self.encoder_seg(seg_label, seg_label)
-        # clip_output = self.encoder_seg(label_emb, label_emb)
-        # seg_label_emb = self.encoder_final(seg_output, clip_output)
-        
-        # seg_label_emb = seg_label_emb.permute(0,2,1)
-          
         if(not gen):
             diff_output = None
             diff_loss = self.diff(mu, mels, g=seg_label_emb, gen=False).mean() 
@@ -297,29 +263,20 @@ class DiffusionDecoder(nn.Module):
     self.delta_t = T*1.0 / N
     self.discrete_betas = torch.linspace(beta_0, beta_1, N)
     self.unet = unet.Unet(dim=unet_channels, out_dim=unet_out_channels, dim_mults=dim_mults, groups=groups, channels=unet_in_channels, with_time_emb=with_time_emb)
-    # self.linear = torch.nn.Linear(512, 64)
 
   def marginal_prob(self, mu, x, t):
     log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    if(mu is not None):
-        mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu # remove mu
-    else:  
-        mean = torch.exp(log_mean_coeff[:, None, None]) * x
+    mean = torch.exp(log_mean_coeff[:, None, None]) * x + (1-torch.exp(log_mean_coeff[:, None, None]) ) * mu # remove mu
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 
   def cal_loss(self, x, mu, t, z, std, g=None):
     time_steps = t * (self.N - 1)
-    # if(mu is None):
+
     if g is not None:
-        x = torch.stack([x, g], 1)
+        x = torch.stack([x, mu, g], 1)
     else:
-        x = torch.stack([x], 1)
-    # else:
-    #   if g is not None:
-    #       x = torch.stack([x, mu, g], 1)
-    #   else:
-    #       x = torch.stack([x, mu], 1)
+        x = torch.stack([x, mu], 1)
     
     grad = self.unet(x, time_steps)
     loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
@@ -335,34 +292,19 @@ class DiffusionDecoder(nn.Module):
       return loss
     else:
       with torch.no_grad():
-        if(mu is not None):
-          # mu norm
-          mu = (mu - torch.mean(mu))/torch.std(mu)
-          y_T = torch.randn_like(y) + mu
-        else:
-          y_T = torch.randn_like(y) 
+        y_T = torch.randn_like(y) + mu
         y_t_plus_one = y_T
         y_t = None
         for n in tqdm(range(self.N - 1, 0, -1)):
           t = torch.FloatTensor(1).fill_(n).to(y.device)
           
           if g is not None:
-              x = torch.stack([y_t_plus_one, g], 1)
+              x = torch.stack([y_t_plus_one, mu, g], 1)
           else:
-              x = torch.stack([y_t_plus_one], 1)
-              
-          # else:
-          #   if g is not None:
-          #       x = torch.stack([y_t_plus_one, mu, g], 1)
-          #   else:
-          #       x = torch.stack([y_t_plus_one, mu], 1)
+              x = torch.stack([y_t_plus_one, mu], 1)
           
           grad = self.unet(x, t)
-          
-          # if(mu is not None):
-          #     y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
-          # else:
-          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(-y_t_plus_one-grad)
-            
+          y_t = y_t_plus_one-0.5*self.delta_t*self.discrete_betas[n]*(mu-y_t_plus_one-grad)
           y_t_plus_one = y_t
+          
       return y_t

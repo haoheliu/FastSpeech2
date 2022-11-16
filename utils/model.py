@@ -5,13 +5,13 @@ import torch
 import numpy as np
 
 import hifigan
-from model import FastSpeech2, ScheduledOptim
+from model import FastSpeech2, ScheduledOptim, Label2Audio
 from discriminator import SpecDiscriminator
 
-def get_model(args, configs, device, train=False):
+def get_model(args, model_name, configs, device, train=False):
     (preprocess_config, model_config, train_config) = configs
 
-    model = FastSpeech2(preprocess_config, model_config).to(device)
+    model = eval(model_name)(preprocess_config, model_config).to(device)
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
@@ -73,7 +73,7 @@ def get_param_num(model):
     return num_param
 
 
-def get_vocoder(config, device):
+def get_vocoder(config, device, mel_bins):
     name = config["vocoder"]["model"]
     speaker = config["vocoder"]["speaker"]
 
@@ -89,17 +89,28 @@ def get_vocoder(config, device):
         vocoder.mel2wav.eval()
         vocoder.mel2wav.to(device)
     elif name == "HiFi-GAN":
-        with open("hifigan/config.json", "r") as f:
-            config = json.load(f)
-        config = hifigan.AttrDict(config)
-        vocoder = hifigan.Generator(config)
-        print("Load hifigan/g_00395000")
-        ckpt = torch.load("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/hifigan/g_00395000")
-        vocoder.load_state_dict(ckpt["generator"])
-        vocoder.eval()
-        vocoder.remove_weight_norm()
-        vocoder.to(device)
-
+        if(mel_bins==64):
+            with open("hifigan/config_16k_64.json", "r") as f:
+                config = json.load(f)
+            config = hifigan.AttrDict(config)
+            vocoder = hifigan.Generator(config)
+            print("Load hifigan/g_01080000")
+            ckpt = torch.load("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/hifigan/g_01080000")
+            vocoder.load_state_dict(ckpt["generator"])
+            vocoder.eval()
+            vocoder.remove_weight_norm()
+            vocoder.to(device)
+        elif(mel_bins==128):
+            with open("hifigan/config_16k_128.json", "r") as f:
+                config = json.load(f)
+            config = hifigan.AttrDict(config)
+            vocoder = hifigan.Generator(config)
+            print("Load hifigan/g_01440000")
+            ckpt = torch.load("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/hifigan/g_01440000")
+            vocoder.load_state_dict(ckpt["generator"])
+            vocoder.eval()
+            vocoder.remove_weight_norm()
+            vocoder.to(device)
     return vocoder
 
 

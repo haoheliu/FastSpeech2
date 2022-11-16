@@ -11,6 +11,8 @@ from torch.utils.data import Dataset
 import random
 import audio as Audio
 import librosa
+import os
+import torchvision
 
 def make_index_dict(label_csv):
     index_lookup = {}
@@ -61,12 +63,18 @@ class Dataset(Dataset):
             data_json = json.load(fp)
 
         self.data = data_json['data']
+        np.random.shuffle(self.data)
         self.melbins = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
         self.freqm = preprocess_config["preprocessing"]["mel"]["freqm"]
         self.timem = preprocess_config["preprocessing"]["mel"]["timem"]
         self.mixup = train_config["augmentation"]["mixup"]
         self.dataset = preprocess_config['dataset']
         self.sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+        self.segment_label_path = preprocess_config["path"]["segment_label_path"]
+        self.target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
+        self.use_blur = self.preprocess_config["preprocessing"]["mel"]["blur"]
+        
+        print("Use mixup rate of %s; Use SpecAug (T,F) of (%s, %s); Use blurring effect or not %s" % (self.mixup, self.timem, self.freqm, self.use_blur))
         
         print('now process ' + self.dataset)
         # dataset spectrogram mean and std, used to normalize the input
@@ -136,7 +144,7 @@ class Dataset(Dataset):
             waveform=waveform[0,...]
 
         waveform = waveform[None,...]
-        waveform_length = int(self.preprocess_config["preprocessing"]["mel"]["target_length"] * self.preprocess_config["preprocessing"]["stft"]["hop_length"])
+        waveform_length = int(self.target_length * self.preprocess_config["preprocessing"]["stft"]["hop_length"])
         
         if waveform_length > waveform.shape[1]:
             # padding
@@ -155,16 +163,15 @@ class Dataset(Dataset):
         fbank, energy = Audio.tools.get_mel_from_wav(waveform, self.STFT)
         fbank = torch.FloatTensor(fbank.T)
         
-        target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
         n_frames = fbank.shape[0]
 
-        p = target_length - n_frames
+        p = self.target_length - n_frames
         # cut and pad
         if p > 0:
             m = torch.nn.ZeroPad2d((0, 0, 0, p))
             fbank = m(fbank)
         elif p < 0:
-            fbank = fbank[0:target_length, :]
+            fbank = fbank[0:self.target_length, :]
             
         # fbank = fbank.permute
         
@@ -172,7 +179,6 @@ class Dataset(Dataset):
             return fbank, 0, waveform
         else:
             return fbank, mix_lambda, waveform
-
     def __getitem__(self, index):
         """
         returns: image, audio, nframes
@@ -211,33 +217,75 @@ class Dataset(Dataset):
             label_indices = torch.FloatTensor(label_indices)
 
         # SpecAug, not do for eval set
-        freqm = torchaudio.transforms.FrequencyMasking(self.freqm)
-        timem = torchaudio.transforms.TimeMasking(self.timem)
+        assert torch.min(fbank) < 0
+        fbank = fbank.exp()
+        ############################### Blur and Spec Aug ####################################################
         fbank = torch.transpose(fbank, 0, 1)
         # this is just to satisfy new torchaudio version.
         fbank = fbank.unsqueeze(0)
+        # torch.Size([1, 128, 1056])
+        
+        if(self.use_blur): 
+            fbank = self.blur(fbank)
         if self.freqm != 0:
-            fbank = freqm(fbank)
+            fbank = self.frequency_masking(fbank, self.freqm)
         if self.timem != 0:
-            fbank = timem(fbank)
+            fbank = self.time_masking(fbank, self.timem)
+        #############################################################################################
+        fbank = (fbank+1e-7).log()
         # squeeze back
         fbank = fbank.squeeze(0)
         fbank = torch.transpose(fbank, 0, 1)
 
-        # # normalize the input for both training and test
-        # if not self.skip_norm:
-        #     fbank = (fbank - self.norm_mean) / (self.norm_std)
-        # # skip normalization the input if you are trying to get the normalization stats.
-        # else:
-        #     pass
-
         if self.noise == True:
             fbank = fbank + torch.rand(fbank.shape[0], fbank.shape[1]) * np.random.rand() / 10
             fbank = torch.roll(fbank, np.random.randint(-10, 10), 0)
-
+            
+        ##############segment label##############
+        while(True):
+            try:
+                seg_label_fname = os.path.basename(datum['wav']).replace(".wav",".npy")
+                seg_label_fpath = os.path.join(self.segment_label_path, seg_label_fname)
+                seg_label = np.load(seg_label_fpath)
+                seg_label = np.repeat(seg_label, 20, 0)
+                seg_label = seg_label[:self.target_length,:]
+                break
+            except Exception as e:
+                print(e)
+                if(index == len(self.data)-1):
+                    index = 0
+                datum = self.data[index+1]
+        #########################################
         # the output fbank shape is [time_frame_num, frequency_bins], e.g., [1024, 128]
-        return fbank, label_indices, datum['wav'], waveform
+        return fbank, label_indices, datum['wav'], waveform, seg_label
 
     def __len__(self):
         return len(self.data)
     
+    def random_uniform(self, start, end):
+        val = torch.rand(1).item()
+        return start + (end-start) * val
+
+    def blur(self, fbank):
+        assert torch.min(fbank) >= 0
+        kernel_size=self.random_uniform(1, self.melbins)
+        fbank = torchvision.transforms.functional.gaussian_blur(fbank, kernel_size=[kernel_size, kernel_size])
+        return fbank
+
+    def frequency_masking(self, fbank, freqm):
+        bs, freq, tsteps = fbank.size()
+        mask_len = int(self.random_uniform(freqm // 8, freqm))
+        mask_start = int(self.random_uniform(start=0, end=freq-mask_len))
+        fbank[:,mask_start:mask_start+mask_len,:] *= 0.0
+        # value = self.random_uniform(0.0, 1.0)
+        # fbank[:,mask_start:mask_start+mask_len,:] += value
+        return fbank
+
+    def time_masking(self, fbank, timem):
+        bs, freq, tsteps = fbank.size()
+        mask_len = int(self.random_uniform(timem // 8, timem))
+        mask_start = int(self.random_uniform(start=0, end=tsteps-mask_len))
+        fbank[:,:,mask_start:mask_start+mask_len] *= 0.0
+        # value = self.random_uniform(0.0, 1.0)
+        # fbank[:,:,mask_start:mask_start+mask_len] += value
+        return fbank

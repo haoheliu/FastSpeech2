@@ -18,6 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import pandas as pd
 
+import matplotlib.pyplot as plt
 from utils.model import get_model, get_vocoder, get_param_num, get_discriminator
 from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
@@ -58,7 +59,7 @@ def seed_torch(seed=0):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-# FBANK=None
+FBANK=None
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_restore_step(path):
@@ -67,6 +68,8 @@ def get_restore_step(path):
     return max(steps)
 
 def main(rank, n_gpus, args, configs):
+    global FBANK
+    
     print(f"Running DDP on rank {rank}.")
     print("Prepare training ...")
     
@@ -141,7 +144,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=12,
+            num_workers=0,
             # worker_init_fn=seed_worker,
             generator=g,
             pin_memory=True
@@ -150,7 +153,7 @@ def main(rank, n_gpus, args, configs):
 
     # disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
-    model, optimizer = get_model(args, configs, device, train=True)
+    model, optimizer = get_model(args, model_config["model_name"], configs, device, train=True)
     model = model.cuda(rank)
     print("===> Woking directory:", os.getcwd())
     if(n_gpus > 1):
@@ -161,7 +164,7 @@ def main(rank, n_gpus, args, configs):
     print("Number of FastSpeech2 Parameters:", num_param)
 
     # Load vocoder 
-    vocoder = get_vocoder(model_config, device)
+    vocoder = get_vocoder(model_config, device, preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
 
     # Init logger
     for p in train_config["path"].values():
@@ -188,20 +191,36 @@ def main(rank, n_gpus, args, configs):
     outer_bar.update()
 
     while True:
-        for batchs in loader:
+        for batchs in tqdm(loader):
             # fbank: [4, 1000, 80], labels: [4, 309]
-            fbank, labels, fnames, waveform = batchs 
+            fbank, labels, fnames, waveform, seg_label = batchs 
+            
+            # for i in range(fbank.size(0)):
+            #     fb = fbank[i].numpy()
+            #     seg_lb = seg_label[i].numpy()
+            #     logits = np.mean(seg_lb, axis=0)
+            #     index = np.argsort(logits)[::-1][:5]
+            #     plt.imshow(seg_lb[:,index], aspect="auto")
+            #     plt.title(index)
+            #     plt.savefig("%s_label.png" % i)
+            #     plt.close()
+            #     plt.imshow(fb, aspect="auto")
+            #     plt.savefig("%s_fb.png" % i)
+            #     plt.close()
+
             fbank = fbank.to(device)
             labels = labels.to(device)
-            fbank = normalize(fbank)
+            seg_label = seg_label.to(device)
             
             # if(FBANK is None):
             #     FBANK = fbank.flatten()
             # else:
             #     FBANK = torch.cat([FBANK, fbank.flatten()])
             # print(torch.mean(FBANK), torch.std(FBANK))
+            
+            fbank = normalize(fbank)
             # Forward
-            diff_loss, _, _ = model(fbank, labels, gen=False)
+            diff_loss, _, _ = model(fbank, labels, seg_label, gen=False)
             
             total_loss = diff_loss / grad_acc_step
             total_loss.backward()
@@ -226,7 +245,7 @@ def main(rank, n_gpus, args, configs):
                 if step % synth_step == 0:
                     with torch.no_grad():
                         model.eval()
-                        diff_loss, generated, _ = model(fbank, labels, gen=True)
+                        diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
                     model.train()
                     for i in range(fbank.size(0)):
                         label = [int(x) for x in torch.where(labels[i] == 1)[0]]
@@ -235,7 +254,7 @@ def main(rank, n_gpus, args, configs):
                         fig, wav_reconstruction, wav_prediction = synth_one_sample(
                             denormalize(fbank[i]),
                             denormalize(generated[i]),
-                            labels[i],
+                            label,
                             vocoder,
                             model_config,
                             preprocess_config,
@@ -289,7 +308,6 @@ def main(rank, n_gpus, args, configs):
                 quit()
             step += 1
             outer_bar.update(1)
-
 
 if __name__ == "__main__":
     # torch.multiprocessing.set_start_method('spawn')# good solution !!!!

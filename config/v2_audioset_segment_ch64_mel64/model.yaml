@@ -20,20 +20,13 @@ variance_embedding:
   energy_quantization: "linear" # support 'linear' or 'log', 'log' is allowed only if the energy values are not normalized during preprocessing
   n_bins: 256
 
-# gst:
-#   use_gst: False
-#   conv_filters: [32, 32, 64, 64, 128, 128]
-#   gru_hidden: 128
-#   token_size: 128
-#   n_style_token: 10
-#   attn_head: 4
-
 multi_speaker: True
 
 max_seq_len: 1000
 N_diff_steps: 1000
-cutoff: 64
-
+cutoff: 1000
+unet_channel: 64
+model_name: "FastSpeech2"
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'
   speaker: "LJSpeech" # support  'LJSpeech', 'universal'
