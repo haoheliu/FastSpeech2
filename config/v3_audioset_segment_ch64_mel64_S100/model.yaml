@@ -25,7 +25,7 @@ multi_speaker: True
 max_seq_len: 1000
 N_diff_steps: 100
 cutoff: 1000
-unet_channel: 32
+unet_channel: 64
 model_name: "Label2Audio"
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'

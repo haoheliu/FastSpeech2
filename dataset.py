@@ -50,7 +50,7 @@ def preemphasis(signal,coeff=0.97):
     return np.append(signal[0],signal[1:]-coeff*signal[:-1])
 
 class Dataset(Dataset):
-    def __init__(self, preprocess_config, train_config, train=True):
+    def __init__(self, preprocess_config, train_config, train=True, with_context_prob=0.5):
         """
         Dataset that manages audio recordings
         :param audio_conf: Dictionary containing the audio loading and preprocessing settings
@@ -73,6 +73,8 @@ class Dataset(Dataset):
         self.segment_label_path = preprocess_config["path"]["segment_label_path"]
         self.target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
         self.use_blur = self.preprocess_config["preprocessing"]["mel"]["blur"]
+        self.with_context_prob = with_context_prob
+        self.feature_cache_path = self.preprocess_config["path"]["feature_save_path"]
         
         print("Use mixup rate of %s; Use SpecAug (T,F) of (%s, %s); Use blurring effect or not %s" % (self.mixup, self.timem, self.freqm, self.use_blur))
         
@@ -101,48 +103,26 @@ class Dataset(Dataset):
             preprocess_config["preprocessing"]["mel"]["mel_fmin"],
             preprocess_config["preprocessing"]["mel"]["mel_fmax"],
         )
-
+        
+        self.fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
+        self.fbank_std = preprocess_config["preprocessing"]["mel"]["std"]
+    
+    def normalize(self, x):
+        return (x-self.fbank_mean)/self.fbank_std
+    
     def resample(self, waveform, sr):
         if(sr==32000 and self.sampling_rate==16000):
             waveform = waveform[::2]
         return waveform
 
-    def _wav2fbank(self, filename, filename2=None):
-        # mixup
-        if filename2 == None:
-            waveform, sr = librosa.load(filename, sr=None, mono=True)
-            waveform = self.resample(waveform, sr)
-            waveform = waveform - np.mean(waveform)
-        # mixup
-        else:
-            waveform1, sr = librosa.load(filename, sr=None, mono=True)
-            waveform1 = self.resample(waveform1, sr)
-            waveform2, sr2 = librosa.load(filename2, sr=None, mono=True)
-            waveform2 = self.resample(waveform2, sr2)
-            
-            waveform1,waveform2 = waveform1[None,...], waveform2[None,...]
-            waveform1 = waveform1 - np.mean(waveform1)
-            waveform2 = waveform2 - np.mean(waveform2)
-
-            if waveform1.shape[1] != waveform2.shape[1]:
-                if waveform1.shape[1] > waveform2.shape[1]:
-                    # padding
-                    temp_wav = np.zeros((1, waveform1.shape[1]))
-                    temp_wav[0, 0:waveform2.shape[1]] = waveform2
-                    waveform2 = temp_wav
-                else:
-                    # cutting
-                    waveform2 = waveform2[0, 0:waveform1.shape[1]]
-
-            # sample lambda from uniform distribution
-            #mix_lambda = random.random()
-            # sample lambda from beta distribtion
-            mix_lambda = np.random.beta(10, 10)
-
-            mix_waveform = mix_lambda * waveform1 + (1 - mix_lambda) * waveform2
-            waveform = mix_waveform - np.mean(mix_waveform)
-            waveform=waveform[0,...]
-
+    def _wav2fbank(self, filename):
+        # basename = os.path.basename(filename)[:-4]
+        # cache_path = os.path.join(self.feature_cache_path, "%s.npy" % basename)
+        # if(not os.path.exists(cache_path)):
+        
+        waveform, sr = librosa.load(filename, sr=None, mono=True)
+        waveform = self.resample(waveform, sr)
+        waveform = waveform - np.mean(waveform)
         waveform = waveform[None,...]
         waveform_length = int(self.target_length * self.preprocess_config["preprocessing"]["stft"]["hop_length"])
         
@@ -154,13 +134,14 @@ class Dataset(Dataset):
         else:
             # cutting
             waveform = waveform[:, :waveform_length]
+            
         waveform = waveform[0,...]          
         
-        # waveform = waveform / np.max(np.abs(waveform))
-        # fbank = torchaudio.compliance.kaldi.fbank(waveform, htk_compat=True, sample_frequency=16000, use_energy=False,
-        #                                           window_type='hanning', num_mel_bins=64, dither=0.0, frame_shift=10)
-        
-        fbank, energy = Audio.tools.get_mel_from_wav(waveform, self.STFT)
+        fbank, _ = Audio.tools.get_mel_from_wav(waveform, self.STFT)
+            # np.save(cache_path, fbank)
+        # else:
+        #     fbank = np.load(cache_path)
+
         fbank = torch.FloatTensor(fbank.T)
         
         n_frames = fbank.shape[0]
@@ -173,12 +154,12 @@ class Dataset(Dataset):
         elif p < 0:
             fbank = fbank[0:self.target_length, :]
             
-        # fbank = fbank.permute
+        return fbank, 0
         
-        if filename2 == None:
-            return fbank, 0, waveform
-        else:
-            return fbank, mix_lambda, waveform
+    def decide_with_context_or_not(self):
+        coin = self.random_uniform(0,1)
+        return coin < self.with_context_prob
+        
     def __getitem__(self, index):
         """
         returns: image, audio, nframes
@@ -186,61 +167,40 @@ class Dataset(Dataset):
         audio is a FloatTensor of size (N_freq, N_frames) for spectrogram, or (N_frames) for waveform
         nframes is an integer
         """
-        # do mix-up for this sample (controlled by the given mixup rate)
-        if random.random() < self.mixup:
-            datum = self.data[index]
-            # find another sample to mix, also do balance sampling
-            # sample the other sample from the multinomial distribution, will make the performance worse
-            # mix_sample_idx = np.random.choice(len(self.data), p=self.sample_weight_file)
-            # sample the other sample from the uniform distribution
-            mix_sample_idx = random.randint(0, len(self.data)-1)
-            mix_datum = self.data[mix_sample_idx]
-            # get the mixed fbank
-            fbank, mix_lambda, waveform = self._wav2fbank(datum['wav'], mix_datum['wav'])
-            # initialize the label
-            label_indices = np.zeros(self.label_num)
-            # add sample 1 labels
-            for label_str in datum['labels'].split(','):
-                label_indices[int(self.index_dict[label_str])] += mix_lambda
-            # add sample 2 labels
-            for label_str in mix_datum['labels'].split(','):
-                label_indices[int(self.index_dict[label_str])] += (1.0-mix_lambda)
-            label_indices = torch.FloatTensor(label_indices)
-        # if not do mixup
-        else:
-            datum = self.data[index]
-            label_indices = np.zeros(self.label_num)
-            fbank, mix_lambda, waveform = self._wav2fbank(datum['wav'])
-            for label_str in datum['labels'].split(','):
-                label_indices[int(self.index_dict[label_str])] = 1.0
 
-            label_indices = torch.FloatTensor(label_indices)
+        datum = self.data[index]
+        label_indices = np.zeros(self.label_num)
+        fbank, mix_lambda = self._wav2fbank(datum['wav'])
+        for label_str in datum['labels'].split(','):
+            label_indices[int(self.index_dict[label_str])] = 1.0
+
+        label_indices = torch.FloatTensor(label_indices)
 
         # SpecAug, not do for eval set
         assert torch.min(fbank) < 0
         fbank = fbank.exp()
+        
+        original_fbank = (fbank+1e-7).log().clone()
         ############################### Blur and Spec Aug ####################################################
         fbank = torch.transpose(fbank, 0, 1)
-        # this is just to satisfy new torchaudio version.
         fbank = fbank.unsqueeze(0)
-        # torch.Size([1, 128, 1056])
         
-        if(self.use_blur): 
-            fbank = self.blur(fbank)
-        if self.freqm != 0:
-            fbank = self.frequency_masking(fbank, self.freqm)
-        if self.timem != 0:
-            fbank = self.time_masking(fbank, self.timem)
-        #############################################################################################
-        fbank = (fbank+1e-7).log()
-        # squeeze back
+        fbank_with_context = self.decide_with_context_or_not()
+        
+        if(not fbank_with_context):
+            fbank = torch.randn_like(fbank).to(fbank.device) # context become random noise
+        else:
+            if(self.use_blur): 
+                fbank = self.blur(fbank)
+            if self.freqm != 0:
+                fbank = self.frequency_masking(fbank, self.freqm)
+            if self.timem != 0:
+                fbank = self.time_masking(fbank, self.timem)
+            fbank = (fbank+1e-7).log()
+
         fbank = fbank.squeeze(0)
         fbank = torch.transpose(fbank, 0, 1)
-
-        if self.noise == True:
-            fbank = fbank + torch.rand(fbank.shape[0], fbank.shape[1]) * np.random.rand() / 10
-            fbank = torch.roll(fbank, np.random.randint(-10, 10), 0)
-            
+        
         ##############segment label##############
         while(True):
             try:
@@ -255,9 +215,14 @@ class Dataset(Dataset):
                 if(index == len(self.data)-1):
                     index = 0
                 datum = self.data[index+1]
+                
         #########################################
-        # the output fbank shape is [time_frame_num, frequency_bins], e.g., [1024, 128]
-        return fbank, label_indices, datum['wav'], waveform, seg_label
+        original_fbank = self.normalize(original_fbank)
+        
+        if(fbank_with_context):
+            fbank = self.normalize(fbank)
+        
+        return original_fbank, fbank, label_indices, datum['wav'], seg_label
 
     def __len__(self):
         return len(self.data)
@@ -267,14 +232,16 @@ class Dataset(Dataset):
         return start + (end-start) * val
 
     def blur(self, fbank):
-        assert torch.min(fbank) >= 0
-        kernel_size=self.random_uniform(1, self.melbins)
+        # assert torch.min(fbank) >= 0
+        kernel_size=int(self.random_uniform(1, self.melbins // 4))
+        if(kernel_size % 2 == 0): 
+            kernel_size -= 1
         fbank = torchvision.transforms.functional.gaussian_blur(fbank, kernel_size=[kernel_size, kernel_size])
         return fbank
 
     def frequency_masking(self, fbank, freqm):
         bs, freq, tsteps = fbank.size()
-        mask_len = int(self.random_uniform(freqm // 8, freqm))
+        mask_len = int(self.random_uniform(1, freqm))
         mask_start = int(self.random_uniform(start=0, end=freq-mask_len))
         fbank[:,mask_start:mask_start+mask_len,:] *= 0.0
         # value = self.random_uniform(0.0, 1.0)
@@ -283,7 +250,7 @@ class Dataset(Dataset):
 
     def time_masking(self, fbank, timem):
         bs, freq, tsteps = fbank.size()
-        mask_len = int(self.random_uniform(timem // 8, timem))
+        mask_len = int(self.random_uniform(1, timem))
         mask_start = int(self.random_uniform(start=0, end=tsteps-mask_len))
         fbank[:,:,mask_start:mask_start+mask_len] *= 0.0
         # value = self.random_uniform(0.0, 1.0)

@@ -13,6 +13,8 @@ path:
 
   segment_label_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/datasets/audioset_segment_labels_ensemble/averaged"
 
+  feature_save_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/datasets/temp/audioset_feature"
+
 preprocessing:
   val_size: 32
   text:

@@ -213,32 +213,26 @@ class Label2Audio(nn.Module):
         cutoff_mel[:,:,self.cutoff_bins:] = min_val
         return cutoff_mel
     
-    def aug_mel(self, mel):
-        # Log mel spectrogram after normalizations
-        mu=mel
-        return mu
-    
     def forward(
         self,
-        mels,
+        original_mel,
+        aug_mels,
         speakers, # (16,) The speaker id for each one in a batch, 
         seg_label,
         gen=False,
-        mu = None
     ):  
         seg_label_emb = self.label_proj(seg_label)
-        # mu = self.aug_mel(mels) # Detroy the mel spectrogram as through as possible
         
         if(not gen):
             diff_output = None
-            diff_loss = self.diff(mu, mels, g=seg_label_emb, gen=False).mean() 
-            postnet_output = mels
+            diff_loss = self.diff(aug_mels, original_mel, g=seg_label_emb, gen=False).mean() 
+            postnet_output = original_mel
         else:
-            diff_output = self.diff(mu, mels, g=seg_label_emb, gen=True)
+            diff_output = self.diff(aug_mels, original_mel, g=seg_label_emb, gen=True)
             postnet_output = diff_output
             diff_loss = None
         
-        return diff_loss, postnet_output, mels
+        return diff_loss, postnet_output, original_mel
             
 class DiffusionDecoder(nn.Module):
   def __init__(self, 

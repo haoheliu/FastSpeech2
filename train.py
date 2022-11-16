@@ -113,7 +113,7 @@ def main(rank, n_gpus, args, configs):
         samples_weight = np.loadtxt(preprocess_config["path"]["train_data"][:-5] + '_weight.csv', delimiter=',')
         sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
         dataset = Dataset(
-            preprocess_config, train_config, train=True
+            preprocess_config, train_config, train=True, with_context_prob=0.5
         )
         
         if(n_gpus>1):
@@ -124,7 +124,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=12,
+            num_workers=16,
             # worker_init_fn=seed_worker,
             generator=g,
             pin_memory=True
@@ -132,7 +132,7 @@ def main(rank, n_gpus, args, configs):
     else:
         print('balanced sampler is not used')
         dataset = Dataset(
-            preprocess_config, train_config, train=True
+            preprocess_config, train_config, train=True, with_context_prob=0.5
         )
         if(n_gpus > 1):
             sampler = DistributedSampler(dataset, num_replicas=n_gpus, rank=rank, shuffle=True)
@@ -144,7 +144,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=0,
+            num_workers=16,
             # worker_init_fn=seed_worker,
             generator=g,
             pin_memory=True
@@ -191,23 +191,30 @@ def main(rank, n_gpus, args, configs):
     outer_bar.update()
 
     while True:
-        for batchs in tqdm(loader):
+        for id, batchs in tqdm(enumerate(loader)):
             # fbank: [4, 1000, 80], labels: [4, 309]
-            fbank, labels, fnames, waveform, seg_label = batchs 
+            original_fbank, fbank, labels, fnames, seg_label = batchs 
             
-            # for i in range(fbank.size(0)):
-            #     fb = fbank[i].numpy()
-            #     seg_lb = seg_label[i].numpy()
-            #     logits = np.mean(seg_lb, axis=0)
-            #     index = np.argsort(logits)[::-1][:5]
-            #     plt.imshow(seg_lb[:,index], aspect="auto")
-            #     plt.title(index)
-            #     plt.savefig("%s_label.png" % i)
-            #     plt.close()
-            #     plt.imshow(fb, aspect="auto")
-            #     plt.savefig("%s_fb.png" % i)
-            #     plt.close()
-
+            if(id == 0):
+                for i in range(fbank.size(0)):
+                    fb = fbank[i].numpy()
+                    original_fb = original_fbank[i].numpy()
+                    seg_lb = seg_label[i].numpy()
+                    logits = np.mean(seg_lb, axis=0)
+                    index = np.argsort(logits)[::-1][:5]
+        
+                    plt.imshow(seg_lb[:,index], aspect="auto")
+                    plt.title(index)
+                    plt.savefig("%s_label.png" % i)
+                    plt.close()
+                    plt.imshow(fb, aspect="auto")
+                    plt.savefig("%s_fb.png" % i)
+                    plt.close()
+                    plt.imshow(original_fb, aspect="auto")
+                    plt.savefig("%s_fb_original.png" % i)
+                    plt.close()
+            
+            original_fbank = original_fbank.to(device)
             fbank = fbank.to(device)
             labels = labels.to(device)
             seg_label = seg_label.to(device)
@@ -218,9 +225,11 @@ def main(rank, n_gpus, args, configs):
             #     FBANK = torch.cat([FBANK, fbank.flatten()])
             # print(torch.mean(FBANK), torch.std(FBANK))
             
-            fbank = normalize(fbank)
+            # fbank = normalize(fbank)
+            # original_fbank = normalize(original_fbank)
+            
             # Forward
-            diff_loss, _, _ = model(fbank, labels, seg_label, gen=False)
+            diff_loss, _, _ = model(original_fbank, fbank, labels, seg_label, gen=False)
             
             total_loss = diff_loss / grad_acc_step
             total_loss.backward()
@@ -245,7 +254,7 @@ def main(rank, n_gpus, args, configs):
                 if step % synth_step == 0:
                     with torch.no_grad():
                         model.eval()
-                        diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+                        diff_loss, generated, _ = model(original_fbank, fbank, labels, seg_label, gen=True)
                     model.train()
                     for i in range(fbank.size(0)):
                         label = [int(x) for x in torch.where(labels[i] == 1)[0]]
@@ -267,12 +276,12 @@ def main(rank, n_gpus, args, configs):
                         sampling_rate = preprocess_config["preprocessing"]["audio"][
                             "sampling_rate"
                         ]
-                        log(
-                            train_logger,
-                            audio=waveform[i],
-                            sampling_rate=sampling_rate,
-                            tag="Training/step_{}_{}_{}_original".format(step, label, i),
-                        )
+                        # log(
+                        #     train_logger,
+                        #     audio=waveform[i],
+                        #     sampling_rate=sampling_rate,
+                        #     tag="Training/step_{}_{}_{}_original".format(step, label, i),
+                        # )
                         log(
                             train_logger,
                             audio=wav_reconstruction,

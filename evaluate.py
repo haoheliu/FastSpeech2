@@ -29,7 +29,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
     
     # Get dataset
     dataset = Dataset(
-        preprocess_config, train_config, train=False
+        preprocess_config, train_config, train=False, with_context_prob=0.0
     )
     
     batch_size = train_config["optimizer"]["batch_size"]
@@ -41,27 +41,27 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
 
     # Evaluation
     for batchs in loader:
-        fbank, labels, fnames, waveform, seg_label = batchs 
+        original_fbank, fbank, labels, fnames, seg_label = batchs 
+        original_fbank = original_fbank.to(device)
         fbank = fbank.to(device)
         labels = labels.to(device)
         seg_label = seg_label.to(device)
-        fbank = normalize(fbank)
         
         with torch.no_grad():
             # Forward
-            diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+            diff_loss, generated, _ = model(original_fbank, fbank, labels, seg_label, gen=True)
             # generated = denormalize(generated)
         break
     
     if logger is not None:
         for i in range(fbank.size(0)):
-            label = int(torch.where(labels[i] == 1)[0][0])
-            label = num2label[label]
+            label = [int(x) for x in torch.where(labels[i] == 1)[0]]
+            label = [num2label[x] for x in label]
             func = synth_one_sample    
             fig, wav_reconstruction, wav_prediction = func(
                 denormalize(fbank[i]),
                 denormalize(generated[i]),
-                labels[i],
+                label,
                 vocoder,
                 model_config,
                 preprocess_config,
@@ -75,12 +75,12 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
 
             sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
             
-            log(
-                    logger,
-                    audio=waveform[i],
-                    sampling_rate=sampling_rate,
-                    tag="Training/step_{}_{}_{}_original".format(step, label, i),
-            )
+            # log(
+            #         logger,
+            #         audio=waveform[i],
+            #         sampling_rate=sampling_rate,
+            #         tag="Training/step_{}_{}_{}_original".format(step, label, i),
+            # )
             log(
                 logger,
                 audio=wav_reconstruction,
