@@ -115,6 +115,28 @@ class Dataset(Dataset):
             waveform = waveform[::2]
         return waveform
 
+    def extract_feature(self, filename):
+        fbank,_ = self._wav2fbank(filename)
+        
+        assert torch.min(fbank) < 0
+        fbank = fbank.exp()
+        
+        original_fbank = (fbank+1e-7).log().clone()
+
+        fbank = torch.transpose(fbank, 0, 1)
+        fbank = fbank.unsqueeze(0)
+        
+        fbank = self.blur(fbank, 16)
+        fbank = self.time_masking(fbank, 400, 800)
+        fbank = self.frequency_masking(fbank, 32, 48)
+        
+        fbank = (fbank+1e-7).log()
+
+        fbank = fbank.squeeze(0)
+        fbank = torch.transpose(fbank, 0, 1)
+        
+        return self.normalize(original_fbank), self.normalize(fbank)
+
     def _wav2fbank(self, filename):
         # basename = os.path.basename(filename)[:-4]
         # cache_path = os.path.join(self.feature_cache_path, "%s.npy" % basename)
@@ -230,27 +252,31 @@ class Dataset(Dataset):
         val = torch.rand(1).item()
         return start + (end-start) * val
 
-    def blur(self, fbank):
-        # assert torch.min(fbank) >= 0
-        F_kernel_size=int(self.random_uniform(1, self.melbins // 4))
+    def blur(self, fbank, kernel_size=None):
+        if(kernel_size is None):
+            F_kernel_size=int(self.random_uniform(1, self.melbins // 4))
+        else:
+            F_kernel_size=int(kernel_size)
         
         if(F_kernel_size % 2 == 0): F_kernel_size -= 1
         
         fbank = torchvision.transforms.functional.gaussian_blur(fbank, kernel_size=[F_kernel_size, F_kernel_size])
         return fbank
 
-    def frequency_masking(self, fbank, freqm):
+    def frequency_masking(self, fbank, freqm, mask_len=None):
         bs, freq, tsteps = fbank.size()
-        mask_len = int(self.random_uniform(1, freqm))
+        if(mask_len is None):
+            mask_len = int(self.random_uniform(1, freqm))
         mask_start = int(self.random_uniform(start=0, end=freq-mask_len))
         fbank[:,mask_start:mask_start+mask_len,:] *= 0.0
         # value = self.random_uniform(0.0, 1.0)
         # fbank[:,mask_start:mask_start+mask_len,:] += value
         return fbank
 
-    def time_masking(self, fbank, timem):
+    def time_masking(self, fbank, timem, mask_len=None):
         bs, freq, tsteps = fbank.size()
-        mask_len = int(self.random_uniform(1, timem))
+        if(mask_len is None):
+            mask_len = int(self.random_uniform(1, timem))
         mask_start = int(self.random_uniform(start=0, end=tsteps-mask_len))
         fbank[:,:,mask_start:mask_start+mask_len] *= 0.0
         # value = self.random_uniform(0.0, 1.0)

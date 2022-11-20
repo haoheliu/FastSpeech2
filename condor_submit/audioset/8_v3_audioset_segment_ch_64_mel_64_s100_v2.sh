@@ -14,4 +14,4 @@ PROJECT="/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/cond
 ######################## RUNNING ENTRY ########################
 cd /mnt/fast/nobackup/scratch4weeks/hl01486/project/tmp/fs2_vggsound_$IDENTIFIER
 
-python3 train.py -p config/v3_audioset_segment_ch64_mel64_S100/preprocess_half_specaug.yaml -m config/v3_audioset_segment_ch64_mel64_S100/model.yaml -t config/v3_audioset_segment_ch64_mel64_S100/train_half_specaug.yaml
+python3 train.py -p config/v3_audioset_segment_ch64_mel64_S100/preprocess.yaml -m config/v3_audioset_segment_ch64_mel64_S100/modelv2.yaml -t config/v3_audioset_segment_ch64_mel64_S100/trainv2.yaml

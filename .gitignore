@@ -28,6 +28,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 condor*log
+data
 *.egg
 MANIFEST
 

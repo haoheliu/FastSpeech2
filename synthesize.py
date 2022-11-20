@@ -127,40 +127,39 @@ def synthesize_target_sound(id, model, step, configs, vocoder, batchs, save_dir,
     labels = labels.to(device)
     seg_label = seg_label.to(device)
     fbank = normalize(preprocess_config, fbank)
-    
-    max_index = torch.argmax(torch.sum(seg_label, dim=1), dim=1)
+
 
     seg_label_bak = torch.zeros_like(seg_label).to(seg_label.device)
     labels_bak = torch.zeros_like(labels).to(labels.device)
-
-    label_id = int(np.random.randint(low=0, high=500))
-
-    for k in range(1):
-        seg_label = seg_label_bak.clone()
-        labels = labels_bak.clone()
-        
-        with torch.no_grad():
-            # Forward
+    
+    for label_id in range(0, 500):
+        label_id = int(label_id)
+        for k in range(1):
+            seg_label = seg_label_bak.clone()
+            labels = labels_bak.clone()
             
-            seg_label[:,:,label_id] = 1.0
-            labels[:,label_id] = 1.0
-            
-            diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
-            
-            for i in range(fbank.size(0)):
-                label_name = num2label[label_id]
+            with torch.no_grad():
+                # Forward
                 
-                tag = ""
+                seg_label[:,:,label_id] = 1.0
+                labels[:,label_id] = 1.0
                 
-                fig, wav_reconstruction, wav_prediction = synth_one_sample(
-                    denormalize(preprocess_config,fbank[i]),
-                    denormalize(preprocess_config,generated[i]),
-                    tag,
-                    vocoder,
-                    model_config,
-                    preprocess_config,
-                )
-                sf.write(file=os.path.join(save_dir, "[%s]gen_%s_%s.wav" % (label_name, k, i)), data=wav_prediction, samplerate=preprocess_config["preprocessing"]["audio"]["sampling_rate"])
+                diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+                
+                for i in range(fbank.size(0)):
+                    label_name = num2label[label_id]
+                    
+                    tag = ""
+                    
+                    fig, wav_reconstruction, wav_prediction = synth_one_sample(
+                        denormalize(preprocess_config,fbank[i]),
+                        denormalize(preprocess_config,generated[i]),
+                        tag,
+                        vocoder,
+                        model_config,
+                        preprocess_config,
+                    )
+                    sf.write(file=os.path.join(save_dir, "[%s]gen_%s_%s.wav" % (label_name, k, i)), data=wav_prediction, samplerate=preprocess_config["preprocessing"]["audio"]["sampling_rate"])
 
 
 
@@ -362,7 +361,7 @@ if __name__ == "__main__":
     configs = (preprocess_config, model_config, train_config)
 
     # Get model
-    model = get_model(args, configs, device, train=False)
+    model = get_model(args, "FastSpeech2", configs, device, train=False)
 
     # Load vocoder
     vocoder = get_vocoder(model_config, device, mel_bins=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
@@ -387,11 +386,14 @@ if __name__ == "__main__":
         shuffle=True,
     )
 
+
+    synthesize_target_sound(id, model, args.restore_step, configs, vocoder, loader, save_dir, num2label)
+    
     # Evaluation
-    for id, batchs in enumerate(loader):
-        # synthesize(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
-        # label_transfer(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
-        # synthesize_control(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
-        # synthesize_change_sound(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
-        synthesize_target_sound_npy(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
-        break
+    # for id, batchs in enumerate(loader):
+    #     # synthesize(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     # label_transfer(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     # synthesize_control(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     # synthesize_change_sound(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     # synthesize_target_sound_npy(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     break

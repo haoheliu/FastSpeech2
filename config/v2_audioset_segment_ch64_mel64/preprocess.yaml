@@ -10,7 +10,7 @@ path:
   train_data: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/datafiles/audioset_bal_unbal_train_data.json"
   test_data: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/datafiles/audioset_eval_data.json"
   class_label_index: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/class_labels_indices.csv"
-
+  feature_save_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/datasets/temp/audioset_feature"
   segment_label_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/datasets/audioset_segment_labels_ensemble/averaged"
 
 preprocessing:
