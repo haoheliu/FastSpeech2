@@ -5,7 +5,7 @@ import torch
 import numpy as np
 
 import hifigan
-from model import FastSpeech2, ScheduledOptim, Label2Audio
+from model import FastSpeech2, ScheduledOptim, Label2Audio, ClipLabel2Audio
 from discriminator import SpecDiscriminator
 
 def get_model(args, model_name, configs, device, train=False):

@@ -49,7 +49,7 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
         
         with torch.no_grad():
             # Forward
-            diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+            diff_loss, generated = model(fbank, seg_label, gen=True)
             # generated = denormalize(generated)
         break
     

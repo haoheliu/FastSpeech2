@@ -124,8 +124,7 @@ def main(rank, n_gpus, args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=12,
-            # worker_init_fn=seed_worker,
+            num_workers=16,
             generator=g,
             pin_memory=True
         )
@@ -154,6 +153,7 @@ def main(rank, n_gpus, args, configs):
     # disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
     model, optimizer = get_model(args, model_config["model_name"], configs, device, train=True)
+    print(model)
     model = model.cuda(rank)
     print("===> Woking directory:", os.getcwd())
     if(n_gpus > 1):
@@ -209,7 +209,7 @@ def main(rank, n_gpus, args, configs):
             #     plt.close()
 
             fbank = fbank.to(device)
-            labels = labels.to(device)
+            # labels = labels.to(device)
             seg_label = seg_label.to(device)
             
             # if(FBANK is None):
@@ -220,7 +220,7 @@ def main(rank, n_gpus, args, configs):
             
             fbank = normalize(fbank)
             # Forward
-            diff_loss, _, _ = model(fbank, labels, seg_label, gen=False)
+            diff_loss, _ = model(fbank, seg_label, gen=False)
             
             total_loss = diff_loss / grad_acc_step
             total_loss.backward()
@@ -245,7 +245,7 @@ def main(rank, n_gpus, args, configs):
                 if step % synth_step == 0:
                     with torch.no_grad():
                         model.eval()
-                        diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+                        diff_loss, generated = model(fbank, seg_label, gen=True)
                     model.train()
                     for i in range(fbank.size(0)):
                         label = [int(x) for x in torch.where(labels[i] == 1)[0]]
@@ -309,9 +309,20 @@ def main(rank, n_gpus, args, configs):
             step += 1
             outer_bar.update(1)
 
-if __name__ == "__main__":
-    # torch.multiprocessing.set_start_method('spawn')# good solution !!!!
+def read_gpu_ram():
+    import nvidia_smi
+    nvidia_smi.nvmlInit()
+    handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+    info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+    return info.total/1024/1024/1024
+
+def rescale_batchsize(train_config):
+    scale = int(read_gpu_ram() / 10) # 2080ti 12GB is the baseline
+    train_config["optimizer"]["batch_size"] *= scale
+    print("Use the batchsize of %s." % train_config["optimizer"]["batch_size"])
+    return train_config
     
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--restore_step", type=int, default=0)
     parser.add_argument(
@@ -336,6 +347,8 @@ if __name__ == "__main__":
     model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
     train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
       
+    train_config = rescale_batchsize(train_config)  
+    
     configs = (preprocess_config, model_config, train_config)
 
     n_gpus = torch.cuda.device_count()

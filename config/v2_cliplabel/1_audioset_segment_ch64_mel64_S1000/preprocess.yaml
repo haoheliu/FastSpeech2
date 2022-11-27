@@ -1,0 +1,44 @@
+dataset: "audioset"
+class_num: 527
+
+path:
+  corpus_path: ""
+  lexicon_path: ""
+  raw_path: ""
+  preprocessed_path: ""
+
+  train_data: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/datafiles/audioset_bal_unbal_train_data.json"
+  test_data: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/datafiles/audioset_eval_data.json"
+  class_label_index: "/mnt/fast/nobackup/users/hl01486/metadata/audioset_machine_label/class_labels_indices.csv"
+  segment_label_path: "/mnt/fast/nobackup/scratch4weeks/hl01486/datasets/audioset_clip_labels_ensemble/averaged"
+
+  class_reweight_arr_path: "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/data/overall_max_prob.npy"
+
+preprocessing:
+  val_size: 32
+  text:
+    text_cleaners: ["english_cleaners"]
+    language: "en"
+  audio:
+    sampling_rate: 16000
+    max_wav_value: 32768.0
+  stft:
+    filter_length: 1024
+    hop_length: 160
+    win_length: 1024
+  mel:
+    n_mel_channels: 64
+    mel_fmin: 0
+    mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
+    freqm: 0
+    timem: 0
+    blur: False
+    mean: -4.63
+    std: 2.74
+    target_length: 1056
+  pitch:
+    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True
+  energy:
+    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True

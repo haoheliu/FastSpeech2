@@ -20,13 +20,12 @@ from datetime import datetime
 t = time.localtime()
 date = datetime.today().strftime('%Y_%m_%d')
 current_time = time.strftime("%H_%M_%S", t)
-# current_time = date +"_"+ current_time
-current_time="npy_synthesis_remove_0_05_TOP5_smooth_v2"
+current_time = date +"_"+ current_time
+# current_time="npy_synthesis_remove_0_05_TOP5_smooth_v2"
 
 npy_PATH = "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/text2label_t5"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def normalize(preprocess_config, x):
     fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
@@ -64,6 +63,9 @@ def synthesize_target_sound_npy(id, model, step, configs, vocoder, batchs, save_
     for file in os.listdir(npy_PATH):
         
         if(".npy" not in file): continue
+        
+        # if(file != "A_wolf_is_singingnpy.npy"): continue
+        
         print(file)
         label_name = file[:-4]
         fname = "[%s]gen_%s.wav" % (label_name, 0)
@@ -77,30 +79,21 @@ def synthesize_target_sound_npy(id, model, step, configs, vocoder, batchs, save_
             fpath = os.path.join(npy_PATH, file)
             
             seg_label = np.load(fpath)[0]
-            rank = np.mean(torch.sigmoid(torch.tensor(seg_label)).numpy(), axis=0)
-            rank = np.argsort(rank)
+            # rank = np.mean(torch.sigmoid(torch.tensor(seg_label)).numpy(), axis=0)
+            # rank = np.argsort(rank)
             
-            
-            # for i in range(53):
-            #     # if(i <= LABEL_T_SMOOTH): 
-            #     if(i<2): continue
-            #     seg_label[i,:] = np.mean(seg_label[0:i,:], axis=0)
-                # else:
-                    # seg_label[i,:] = np.mean(seg_label[i-LABEL_T_SMOOTH:i,:], axis=0)
             seg_label = np.repeat(seg_label, 20, 0)
             seg_label = seg_label[:1056,:]
             seg_label = torch.sigmoid(torch.tensor(seg_label).cuda())
-            seg_label[:,rank[:-5]] *= 0
-            
+            # seg_label[:,rank[:-5]] *= 0
+            ####################################
+            # seg_label[:,153]=0.05
+            ####################################
             seg_label = seg_label.expand(4,1056,527)
             
             seg_label[seg_label < 0.05] *= 1e-4    
             
             labels = torch.mean(seg_label,dim=1)
-            labels[labels < 0.01] *= 0
-            labels[labels > 0.01] = 1
-            seg_label=labels.unsqueeze(1).expand(4, 1056, 527)
-            
             
             diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
             
@@ -128,13 +121,61 @@ def synthesize_target_sound(id, model, step, configs, vocoder, batchs, save_dir,
     seg_label = seg_label.to(device)
     fbank = normalize(preprocess_config, fbank)
     
-    max_index = torch.argmax(torch.sum(seg_label, dim=1), dim=1)
+    # max_index = torch.argmax(torch.sum(seg_label, dim=1), dim=1)
 
     seg_label_bak = torch.zeros_like(seg_label).to(seg_label.device)
     labels_bak = torch.zeros_like(labels).to(labels.device)
 
-    label_id = int(np.random.randint(low=0, high=500))
+    for label_id in range(0, 500):
+        label_id = int(label_id)
+        
+        for k in range(1):
+            seg_label = seg_label_bak.clone()
+            labels = labels_bak.clone()
+            
+            with torch.no_grad():
+                # Forward
+                
+                seg_label[:,:,label_id] = 1.0
+                labels[:,label_id] = 1.0
+                
+                diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+                
+                for i in range(fbank.size(0)):
+                    label_name = num2label[label_id]
+                    
+                    tag = ""
+                    
+                    fig, wav_reconstruction, wav_prediction = synth_one_sample(
+                        denormalize(preprocess_config,fbank[i]),
+                        denormalize(preprocess_config,generated[i]),
+                        tag,
+                        vocoder,
+                        model_config,
+                        preprocess_config,
+                    )
+                    sf.write(file=os.path.join(save_dir, "[%s]gen_%s_%s.wav" % (label_name, k, i)), data=wav_prediction, samplerate=preprocess_config["preprocessing"]["audio"]["sampling_rate"])
 
+def synthesize_multiple_target_sound(id, model, step, configs, vocoder, batchs, save_dir, num2label):
+    preprocess_config, model_config, train_config = configs
+    
+    # targets={0: 0.75, 1: 0.3, 137: 0.5}
+    # targets={36: 0.5, 137: 0.8, 3: 0.4}
+    # targets={137: 0.9, 138: 0.4, 152: 0.8, 153: 1.0, 283: 0.2}
+    # targets={74: 0.9, 75: 0.5}
+    targets={137: 1.0, 138: 1.0, 193:1.0}
+
+    fbank, labels, fnames, waveform, seg_label = batchs
+    fbank = fbank.to(device)
+    labels = labels.to(device)
+    seg_label = seg_label.to(device)
+    fbank = normalize(preprocess_config, fbank)
+    
+    # max_index = torch.argmax(torch.sum(seg_label, dim=1), dim=1)
+
+    seg_label_bak = torch.zeros_like(seg_label).to(seg_label.device)
+    labels_bak = torch.zeros_like(labels).to(labels.device)
+        
     for k in range(1):
         seg_label = seg_label_bak.clone()
         labels = labels_bak.clone()
@@ -142,13 +183,14 @@ def synthesize_target_sound(id, model, step, configs, vocoder, batchs, save_dir,
         with torch.no_grad():
             # Forward
             
-            seg_label[:,:,label_id] = 1.0
-            labels[:,label_id] = 1.0
+            for k in targets.keys():
+                seg_label[:,:,k] = targets[k]
+                labels[:,k] = targets[k]
             
             diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
             
             for i in range(fbank.size(0)):
-                label_name = num2label[label_id]
+                label_name = [num2label[k] for k in targets.keys()]
                 
                 tag = ""
                 
@@ -161,6 +203,54 @@ def synthesize_target_sound(id, model, step, configs, vocoder, batchs, save_dir,
                     preprocess_config,
                 )
                 sf.write(file=os.path.join(save_dir, "[%s]gen_%s_%s.wav" % (label_name, k, i)), data=wav_prediction, samplerate=preprocess_config["preprocessing"]["audio"]["sampling_rate"])
+
+
+def synthesize_target_sound(id, model, step, configs, vocoder, batchs, save_dir, num2label):
+    preprocess_config, model_config, train_config = configs
+
+    fbank, labels, fnames, waveform, seg_label = batchs
+    fbank = fbank.to(device)
+    labels = labels.to(device)
+    seg_label = seg_label.to(device)
+    fbank = normalize(preprocess_config, fbank)
+    
+    # max_index = torch.argmax(torch.sum(seg_label, dim=1), dim=1)
+
+    seg_label_bak = torch.zeros_like(seg_label).to(seg_label.device)
+    labels_bak = torch.zeros_like(labels).to(labels.device)
+
+    for label_id in range(0, 500):
+        label_id = int(label_id)
+        
+        for k in range(1):
+            seg_label = seg_label_bak.clone()
+            labels = labels_bak.clone()
+            
+            with torch.no_grad():
+                # Forward
+                
+                seg_label[:,:,label_id] = 1.0
+                labels[:,label_id] = 1.0
+                
+                seg_label[:,:,0] = 1.0
+                labels[:,0] = 1.0
+                
+                diff_loss, generated, _ = model(fbank, labels, seg_label, gen=True)
+                
+                for i in range(fbank.size(0)):
+                    label_name = num2label[label_id]
+                    
+                    tag = ""
+                    
+                    fig, wav_reconstruction, wav_prediction = synth_one_sample(
+                        denormalize(preprocess_config,fbank[i]),
+                        denormalize(preprocess_config,generated[i]),
+                        tag,
+                        vocoder,
+                        model_config,
+                        preprocess_config,
+                    )
+                    sf.write(file=os.path.join(save_dir, "[%s]gen_%s_%s.wav" % (label_name, k, i)), data=wav_prediction, samplerate=preprocess_config["preprocessing"]["audio"]["sampling_rate"])
 
 
 
@@ -336,6 +426,20 @@ def label_transfer(id, model, step, configs, vocoder, batchs, save_dir, num2labe
     
 if __name__ == "__main__":
 
+    def seed_torch(seed=1029):
+        import random
+        print("Set seed to %s" % seed)
+        random.seed(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed) 
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+    
+    seed_torch(0)
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--restore_step", type=int, required=True)
     parser.add_argument(
@@ -362,7 +466,7 @@ if __name__ == "__main__":
     configs = (preprocess_config, model_config, train_config)
 
     # Get model
-    model = get_model(args, configs, device, train=False)
+    model = get_model(args, "FastSpeech2",configs, device, train=False)
 
     # Load vocoder
     vocoder = get_vocoder(model_config, device, mel_bins=preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
@@ -383,11 +487,16 @@ if __name__ == "__main__":
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
         dataset,
-        batch_size=batch_size,
+        batch_size=4,
         shuffle=True,
     )
 
-    # Evaluation
+    # for id, batchs in enumerate(loader):
+    #     # synthesize_target_sound(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     synthesize_multiple_target_sound(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
+    #     break
+
+    # # Evaluation
     for id, batchs in enumerate(loader):
         # synthesize(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)
         # label_transfer(id, model, args.restore_step, configs, vocoder, batchs, save_dir, num2label)

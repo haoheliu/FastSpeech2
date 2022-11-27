@@ -1,26 +1,16 @@
-import os
-import json
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from tqdm import tqdm
 import sys
 sys.path.append("/vol/research/ai4sound/project/audio_generation/FastSpeech2")
 import numpy as np
-from transformer import Encoder, Decoder, PostNet
-from model.modules import VarianceAdaptor, EnergyAdaptor
-from utils.tools import get_mask_from_lengths
 import model.unet as unet
-import transformer.Constants as Constants
 import model.glow.commons as commons
 import model.glow.modules as modules
 import model.glow.attentions as attentions
 
 import model.wavenet.modules as modules_wavenet
-import model.wavenet.commons as commons_wavenet
-import model.attention as attention
-from model.attention import FFN
+import collections
 
 class WaveNetEncoder(nn.Module):
   def __init__(self,
