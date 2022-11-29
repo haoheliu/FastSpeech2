@@ -1,6 +1,8 @@
 import argparse
 import os
 
+import sys
+
 import torch
 import yaml
 import torch.nn as nn
@@ -12,15 +14,15 @@ import numpy as np
 from torch.utils.data import WeightedRandomSampler
 import random
 import torch.multiprocessing as mp
-from utils.sampler import DistributedSamplerWrapper
+from _utils.sampler import DistributedSamplerWrapper
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from utils.model import get_model, get_vocoder, get_param_num, get_discriminator
-from utils.tools import to_device, log, synth_one_sample
+from _utils.model import get_model, get_vocoder, get_param_num, get_discriminator
+from _utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
 from evaluate import evaluate

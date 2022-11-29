@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from scipy.io.wavfile import write
+import torchaudio
 
 from audio.audio_processing import griffin_lim
 
@@ -11,9 +12,7 @@ def get_mel_from_wav(audio, _stft):
     melspec, energy = _stft.mel_spectrogram(audio)
     melspec = torch.squeeze(melspec, 0).numpy().astype(np.float32)
     energy = torch.squeeze(energy, 0).numpy().astype(np.float32)
-
     return melspec, energy
-
 
 def inv_mel_spec(mel, out_filename, _stft, griffin_iters=60):
     mel = torch.stack([mel])

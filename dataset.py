@@ -162,6 +162,10 @@ class Dataset(Dataset):
         waveform = waveform[0,...]          
 
         fbank, energy = Audio.tools.get_mel_from_wav(waveform, self.STFT)
+        
+        # path = "/mnt/fast/nobackup/scratch4weeks/hl01486/temp_npy"
+        # np.save(os.path.join(path, os.path.basename(filename)+".npy") ,np.array(fbank))
+        
         fbank = torch.FloatTensor(fbank.T)
         
         n_frames = fbank.shape[0]

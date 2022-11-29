@@ -6,8 +6,8 @@ import yaml
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from utils.model import get_model, get_vocoder
-from utils.tools import to_device, log, synth_one_sample, synth_one_sample_val
+from _utils.model import get_model, get_vocoder
+from _utils.tools import to_device, log, synth_one_sample, synth_one_sample_val
 from model import FastSpeech2Loss
 from dataset import Dataset
 

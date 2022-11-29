@@ -17,6 +17,7 @@ synthesized
 dist/
 downloads/
 eggs/
+*.pt
 .eggs/
 *.tmp
 lib/
@@ -30,7 +31,7 @@ wheels/
 condor*log
 *.egg
 MANIFEST
-
+*.png
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.

@@ -148,15 +148,15 @@ class TacotronSTFT(torch.nn.Module):
         mel_basis = torch.from_numpy(mel_basis).float()
         self.register_buffer("mel_basis", mel_basis)
 
-    def spectral_normalize(self, magnitudes):
-        output = dynamic_range_compression(magnitudes)
+    def spectral_normalize(self, magnitudes, normalize_fun):
+        output = dynamic_range_compression(magnitudes, normalize_fun)
         return output
 
     def spectral_de_normalize(self, magnitudes):
         output = dynamic_range_decompression(magnitudes)
         return output
 
-    def mel_spectrogram(self, y):
+    def mel_spectrogram(self, y, normalize_fun=torch.log):
         """Computes mel-spectrograms from a batch of waves
         PARAMS
         ------
@@ -172,7 +172,7 @@ class TacotronSTFT(torch.nn.Module):
         magnitudes, phases = self.stft_fn.transform(y)
         magnitudes = magnitudes.data
         mel_output = torch.matmul(self.mel_basis, magnitudes)
-        mel_output = self.spectral_normalize(mel_output)
+        mel_output = self.spectral_normalize(mel_output, normalize_fun)
         energy = torch.norm(magnitudes, dim=1)
 
         return mel_output, energy

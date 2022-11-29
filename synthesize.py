@@ -8,10 +8,10 @@ import yaml
 import numpy as np
 from torch.utils.data import DataLoader
 
-from utils.model import get_model, get_vocoder
+from _utils.model import get_model, get_vocoder
 from dataset import Dataset
 import pandas as pd
-from utils.tools import to_device, log, synth_one_sample
+from _utils.tools import to_device, log, synth_one_sample
 import os
 import soundfile as sf
 import time
