@@ -69,7 +69,7 @@ def calculate_kl(featuresdict_1, featuresdict_2, feat_layer_name, same_name=True
     features_1 = torch.stack(features_1, dim=0)
     features_2 = torch.stack(features_2, dim=0)
 
-    features_1 = features_1.softmax(dim=1)
+    features_1 = features_1.softmax(dim=1) # TODO
     features_2 = features_2.softmax(dim=1)
 
     kl = torch.nn.functional.kl_div((features_1 + EPS).log(), features_2, reduction='sum') / len(features_1)

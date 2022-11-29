@@ -179,35 +179,6 @@ class FastSpeech2(nn.Module):
                   ('4', nn.Linear(256, self.mel_bins)),
                 ]))
         
-      #   self.encoder_clip = attention.Encoder(
-      #     hidden_channels=527,
-      #     output_channels=128,
-      #     filter_channels=192,
-      #     n_heads=1,
-      #     n_layers=2,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      #     )
-      
-      #   self.encoder_seg = attention.Encoder(
-      #     hidden_channels=527,
-      #     output_channels=128,
-      #     filter_channels=192,
-      #     n_heads=1,
-      #     n_layers=2,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      #     )
-      
-      #   self.encoder_final = attention.Encoder(
-      #     hidden_channels=128,
-      #     output_channels=64,
-      #     filter_channels=192,
-      #     n_heads=2,
-      #     n_layers=6,
-      #     kernel_size=3,
-      #     p_dropout=0.1
-      # )
         
     def build_frame_energy_mask(self, logmels):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]

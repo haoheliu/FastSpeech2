@@ -132,7 +132,6 @@ class EvaluationHelper():
         plt.legend()
         plt.show()
 
-
     def calculate_metrics(self, output, result, same_name):
         torch.manual_seed(0)
         num_workers=0

@@ -4,7 +4,7 @@ import scipy.linalg
 # FID评价保真度，越小越好
 def calculate_fid(featuresdict_1, featuresdict_2, feat_layer_name): # using 2048 layer to calculate
     eps = 1e-6
-
+    import ipdb; ipdb.set_trace()
     features_1 = featuresdict_1[feat_layer_name]
     features_2 = featuresdict_2[feat_layer_name]
     # print('features_1 ', features_1.shape) # (num, 2048)
