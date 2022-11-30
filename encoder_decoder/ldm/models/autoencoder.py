@@ -443,9 +443,9 @@ class AutoencoderKL(pl.LightningModule):
         images_reconstruct = wandb.Image(self.tensor2numpy(log["reconstructions"][0,0]).T, caption="reconstructions")
         images_samples = wandb.Image(self.tensor2numpy(log["samples"][0,0]).T, caption="samples")
         if(train):
-            wandb.log({"tr_input": images_input,"tr_recons": images_reconstruct,"tr_samples":images_samples})
+            self.logger.experiment.log({"tr_input": images_input,"tr_recons": images_reconstruct,"tr_samples":images_samples})
         else:
-            wandb.log({"val_input": images_input,"val_recons": images_reconstruct,"val_samples":images_samples})
+            self.logger.experiment.log({"val_input": images_input,"val_recons": images_reconstruct,"val_samples":images_samples})
 
     def tensor2numpy(self, tensor):
         return tensor.cpu().detach().numpy()

@@ -29,13 +29,6 @@ def main(args, configs):
 
     preprocess_config, model_config, train_config, autoencoder_config = configs
     configuration = {**preprocess_config, **model_config, **train_config, **autoencoder_config} 
-    wandb.init(
-    project="audioverse",
-    name="Encoder_Decoder",
-    notes="",
-    tags=["autoencoderkl"],
-    config=configuration,
-    )
 
     preprocess_config, model_config, train_config, autoencoder_config = configs
     ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
@@ -102,21 +95,23 @@ def main(args, configs):
                           embed_dim=autoencoder_config["model"]["params"]["embed_dim"],
                           learning_rate = autoencoder_config["model"]["base_learning_rate"],
                         )
-    
-    wandb_logger = WandbLogger() 
-    
+
+    wandb_logger = WandbLogger(version="v1", project="audioverse",config=configuration, name="Encoder_Decoder", save_dir="log") 
     checkpoint_callback = ModelCheckpoint(
-         monitor='val/rec_loss',
-         filename='checkpoint-{epoch:02d}-{val_loss:.2f}',
-         every_n_epochs=1,
-         save_top_k=5
+         monitor='train/total_loss',
+         filename='checkpoint-{step:02d}',
+        #  every_n_epochs=1,
+        every_n_train_steps=20000,
+        save_top_k=5
     )
 
     trainer = Trainer(accelerator="gpu", 
                       devices=torch.cuda.device_count(), 
                       logger=wandb_logger, 
                       callbacks=[checkpoint_callback],
-                      limit_val_batches=200)
+                      val_check_interval=20000,
+                      limit_val_batches=500,
+                      )
 
     trainer.fit(model, loader, val_loader)
 

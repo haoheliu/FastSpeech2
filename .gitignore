@@ -11,6 +11,7 @@ docker_stderror
 
 # Distribution / packaging
 .Python
+wandb
 build/
 develop-eggs/
 synthesized
@@ -28,6 +29,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
+*.ckpt
 .installed.cfg
 condor*log
 *.egg
