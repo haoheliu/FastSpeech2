@@ -97,15 +97,18 @@ def main(args, configs):
                         )
 
     wandb_logger = WandbLogger(version="v1", project="audioverse",config=configuration, name="Encoder_Decoder", save_dir="log") 
+    # wandb_logger = WandbLogger(version="test", project="audioverse",config=configuration, name="test", save_dir="log") 
+    
     checkpoint_callback = ModelCheckpoint(
          monitor='train/total_loss',
          filename='checkpoint-{step:02d}',
         #  every_n_epochs=1,
-        every_n_train_steps=20000,
+        every_n_train_steps=5000,
         save_top_k=5
     )
 
-    trainer = Trainer(accelerator="gpu", 
+    trainer = Trainer(resume_from_checkpoint="/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/encoder_decoder/log/audioverse/v1/checkpoints/checkpoint-step=140000.ckpt",
+                        accelerator="gpu", 
                       devices=torch.cuda.device_count(), 
                       logger=wandb_logger, 
                       callbacks=[checkpoint_callback],

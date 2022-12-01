@@ -41,11 +41,11 @@ class DiagonalGaussianDistribution(object):
             return torch.Tensor([0.])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2)
+                return 0.5 * torch.mean(torch.pow(self.mean, 2)
                                        + self.var - 1.0 - self.logvar,
                                        dim=[1, 2, 3])
             else:
-                return 0.5 * torch.sum(
+                return 0.5 * torch.mean(
                     torch.pow(self.mean - other.mean, 2) / other.var
                     + self.var / other.var - 1.0 - self.logvar + other.logvar,
                     dim=[1, 2, 3])
@@ -54,7 +54,7 @@ class DiagonalGaussianDistribution(object):
         if self.deterministic:
             return torch.Tensor([0.])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(
+        return 0.5 * torch.mean(
             logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
             dim=dims)
 

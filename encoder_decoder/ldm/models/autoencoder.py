@@ -398,7 +398,7 @@ class AutoencoderKL(pl.LightningModule):
         inputs = self.get_input(batch, self.image_key)
         
         if(batch_idx == 0):
-            self.log_images(inputs)
+            self.log_images(inputs, train=False)
             
         reconstructions, posterior = self(inputs)
         aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, 0, self.global_step,
