@@ -4,7 +4,6 @@ import scipy.linalg
 # FID评价保真度，越小越好
 def calculate_fid(featuresdict_1, featuresdict_2, feat_layer_name): # using 2048 layer to calculate
     eps = 1e-6
-    import ipdb; ipdb.set_trace()
     features_1 = featuresdict_1[feat_layer_name]
     features_2 = featuresdict_2[feat_layer_name]
     # print('features_1 ', features_1.shape) # (num, 2048)
@@ -13,7 +12,7 @@ def calculate_fid(featuresdict_1, featuresdict_2, feat_layer_name): # using 2048
     assert torch.is_tensor(features_1) and features_1.dim() == 2
     assert torch.is_tensor(features_2) and features_2.dim() == 2
 
-    stat_1 = { # 计算均值和协方差矩阵
+    stat_1 = {
         'mu': np.mean(features_1.numpy(), axis=0),
         'sigma': np.cov(features_1.numpy(), rowvar=False),
     }

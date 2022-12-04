@@ -76,7 +76,8 @@ def get_param_num(model):
 def get_vocoder(config, device, mel_bins):
     name = config["vocoder"]["model"]
     speaker = config["vocoder"]["speaker"]
-
+    ROOT = "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2"
+    
     if name == "MelGAN":
         if speaker == "LJSpeech":
             vocoder = torch.hub.load(
@@ -90,12 +91,12 @@ def get_vocoder(config, device, mel_bins):
         vocoder.mel2wav.to(device)
     elif name == "HiFi-GAN":
         if(mel_bins==64):
-            with open("hifigan/config_16k_64.json", "r") as f:
+            with open(os.path.join(ROOT, "hifigan/config_16k_64.json"), "r") as f:
                 config = json.load(f)
             config = hifigan.AttrDict(config)
             vocoder = hifigan.Generator(config)
             print("Load hifigan/g_01080000")
-            ckpt = torch.load("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/hifigan/g_01080000")
+            ckpt = torch.load(os.path.join(ROOT, "hifigan/g_01080000"))
             vocoder.load_state_dict(ckpt["generator"])
             vocoder.eval()
             vocoder.remove_weight_norm()
@@ -106,7 +107,7 @@ def get_vocoder(config, device, mel_bins):
             config = hifigan.AttrDict(config)
             vocoder = hifigan.Generator(config)
             print("Load hifigan/g_01440000")
-            ckpt = torch.load("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/hifigan/g_01440000")
+            ckpt = torch.load(os.path.join(ROOT, "hifigan/g_01440000"))
             vocoder.load_state_dict(ckpt["generator"])
             vocoder.eval()
             vocoder.remove_weight_norm()

@@ -12,6 +12,9 @@ from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 import wandb
 from ldm.util import instantiate_from_config
 
+from _utils.model import get_model, get_vocoder, get_param_num, get_discriminator
+from _utils.tools import to_device, log, synth_one_sample
+
 class VQModel(pl.LightningModule):
     def __init__(self,
                  ddconfig,
@@ -282,7 +285,9 @@ class VQModelInterface(VQModel):
 
 class AutoencoderKL(pl.LightningModule):
     def __init__(self,
+                 model_config,
                  preprocess_config,
+                 autoencoder_config,
                  ddconfig,
                  lossconfig,
                  embed_dim,
@@ -299,10 +304,14 @@ class AutoencoderKL(pl.LightningModule):
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
         assert ddconfig["double_z"]
+        self.autoencoder_config = autoencoder_config
+        self.model_config = model_config
+        self.preprocess_config = preprocess_config
         self.quant_conv = torch.nn.Conv2d(2*ddconfig["z_channels"], 2*embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
-        self.mean = preprocess_config["preprocessing"]["mel"]["mean"]
-        self.std = preprocess_config["preprocessing"]["mel"]["std"]
+        
+        self.vocoder = get_vocoder(model_config, "cpu", preprocess_config["preprocessing"]["mel"]["n_mel_channels"])
+        
         self.embed_dim = embed_dim
         if colorize_nlabels is not None:
             assert type(colorize_nlabels)==int
@@ -311,7 +320,10 @@ class AutoencoderKL(pl.LightningModule):
             self.monitor = monitor
         if ckpt_path is not None:
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys)
-        self.learning_rate = learning_rate
+        self.learning_rate = float(learning_rate)
+        print("Initial learning rate %s" % self.learning_rate)
+        
+        self.time_shuffle = int(self.autoencoder_config["model"]["params"]["time_shuffle"])
         
         self.feature_cache = None
         self.flag_first_run = True
@@ -339,7 +351,10 @@ class AutoencoderKL(pl.LightningModule):
         return dec
 
     def forward(self, input, sample_posterior=True):
-        posterior = self.encode(input)
+        inputx = self.time_shuffle_operation(input)
+        
+        posterior = self.encode(inputx)
+        
         if sample_posterior:
             z = posterior.sample()
         else:
@@ -350,24 +365,44 @@ class AutoencoderKL(pl.LightningModule):
             self.flag_first_run=False
             
         dec = self.decode(z)
+        bs, ch, shuffled_timesteps, fbins = dec.size()
+        dec = self.time_unshuffle_operation(dec, bs, int(ch*shuffled_timesteps), fbins)
+        
         return dec, posterior
 
     def get_input(self, batch, k):
         fbank, label_indices, fname, waveform, seg_label = batch
+        if(self.time_shuffle != 1):
+            if(fbank.size(1) % self.time_shuffle != 0):
+                pad_len = self.time_shuffle - (fbank.size(1) % self.time_shuffle)
+                fbank = torch.nn.functional.pad(fbank, (0,0,0,pad_len))
         fbank = fbank.unsqueeze(1)
         return fbank
 
-    def normalize(self, x):
-        return (x-self.mean)/self.std
-
-    def denormalize(self, x):
-        return x * self.std + self.mean
-
+    def time_shuffle_operation(self, fbank):
+        if(self.time_shuffle == 1):
+            return fbank
+        
+        shuffled_fbank = []
+        for i in range(self.time_shuffle):
+            shuffled_fbank.append(fbank[:,:, i::self.time_shuffle,:])
+        return torch.cat(shuffled_fbank, dim=1)
+    
+    def time_unshuffle_operation(self, shuffled_fbank, bs, timesteps, fbins):
+        if(self.time_shuffle == 1):
+            return shuffled_fbank
+        
+        buffer = torch.zeros((bs, 1, timesteps, fbins)).to(shuffled_fbank.device)
+        for i in range(self.time_shuffle):
+            buffer[:,0,i::self.time_shuffle,:] = shuffled_fbank[:,i,:,:]
+        return buffer
+    
     def training_step(self, batch, batch_idx, optimizer_idx):
         
         inputs = self.get_input(batch, self.image_key)
-        
-        if(batch_idx % 500 == 0): self.log_images(inputs)
+        if(batch_idx % 5000 == 0 and self.local_rank==0): 
+            print("Log train image")
+            self.log_images(inputs)
         
         # if(self.feature_cache is None):
         #     self.feature_cache = inputs.cpu().flatten().numpy()
@@ -397,16 +432,17 @@ class AutoencoderKL(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs = self.get_input(batch, self.image_key)
         
-        if(batch_idx == 0):
-            self.log_images(inputs, train=False)
-            
+        if(batch_idx <= 1 and self.local_rank==0):
+            print("Log val image")
+            log = self.log_images(inputs, train=False)
+
         reconstructions, posterior = self(inputs)
         aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, 0, self.global_step,
                                         last_layer=self.get_last_layer(), split="val")
 
         discloss, log_dict_disc = self.loss(inputs, reconstructions, posterior, 1, self.global_step,
                                             last_layer=self.get_last_layer(), split="val")
-
+        
         self.log("val/rec_loss", log_dict_ae["val/rec_loss"])
         self.log_dict(log_dict_ae)
         self.log_dict(log_dict_disc)
@@ -427,26 +463,45 @@ class AutoencoderKL(pl.LightningModule):
         return self.decoder.conv_out.weight
 
     @torch.no_grad()
-    def log_images(self, batch, only_inputs=False, **kwargs):
+    def log_images(self, batch, train=True, only_inputs=False, **kwargs):
         log = dict()
         x = batch.to(self.device)
         if not only_inputs:
             xrec, posterior = self(x)
-            log["samples"] = self.decode(torch.randn_like(posterior.sample()))
+            
+            ###############################################################################
+            # log["samples"] = self.decode(torch.randn_like(posterior.sample()))
+            log["samples"] = self.decode(posterior.sample())
+            
+            bs, ch, shuffled_timesteps, fbins = log["samples"].size()
+            log["samples"] = self.time_unshuffle_operation(log["samples"], bs, int(ch*shuffled_timesteps), fbins)
+            ###############################################################################
+            
             log["reconstructions"] = xrec
+            
         log["inputs"] = x
-        self._log_img(log)
+        self._log_img(log, train=train)
         return log
 
     def _log_img(self, log, train=True):
-        images_input = wandb.Image(self.tensor2numpy(log["inputs"][0,0]).T, caption="input")
-        images_reconstruct = wandb.Image(self.tensor2numpy(log["reconstructions"][0,0]).T, caption="reconstructions")
-        images_samples = wandb.Image(self.tensor2numpy(log["samples"][0,0]).T, caption="samples")
-        if(train):
-            self.logger.experiment.log({"tr_input": images_input,"tr_recons": images_reconstruct,"tr_samples":images_samples})
-        else:
-            self.logger.experiment.log({"val_input": images_input,"val_recons": images_reconstruct,"val_samples":images_samples})
+        images_input = self.tensor2numpy(log["inputs"][0,0]).T
+        images_reconstruct = self.tensor2numpy(log["reconstructions"][0,0]).T 
+        images_samples = self.tensor2numpy(log["samples"][0,0]).T
+        if(train): name =  "train"
+        else: name="val"
+        
+        self.logger.log_image("img_%s" % name, [images_input, images_reconstruct, images_samples], caption=["input","reconstruct","samples"])
 
+        inputs, reconstructions, samples = log["inputs"], log["reconstructions"], log["samples"]
+        
+        _, wav_reconstruction, wav_prediction = synth_one_sample(inputs[0,0], reconstructions[0,0], labels="validation",vocoder=self.vocoder, model_config=self.model_config, preprocess_config=self.preprocess_config)
+        _, wav_reconstruction, wav_samples = synth_one_sample(inputs[0,0], samples[0,0], labels="validation",vocoder=self.vocoder, model_config=self.model_config, preprocess_config=self.preprocess_config)
+        
+
+        self.logger.experiment.log({"original_%s" % name: wandb.Audio(wav_reconstruction, caption="original", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"]),
+                                    "reconstruct_%s" % name: wandb.Audio(wav_prediction, caption="reconstruct", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"]),
+                                    "samples_%s" % name: wandb.Audio(wav_samples, caption="samples", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"])})
+            
     def tensor2numpy(self, tensor):
         return tensor.cpu().detach().numpy()
 

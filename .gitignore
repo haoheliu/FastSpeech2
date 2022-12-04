@@ -29,7 +29,10 @@ sdist/
 var/
 wheels/
 *.egg-info/
+*.wav
+*.mp3
 *.ckpt
+*.pt
 *.pth
 .installed.cfg
 condor*log

@@ -10,8 +10,10 @@ from tqdm import tqdm
 
     
 class MelDataset(torch.utils.data.Dataset):
-    def __init__(self, datadir, _stft, sr=16000, fbin_mean=None, fbin_std=None, augment=False):
+    def __init__(self, datadir, _stft, sr=16000, fbin_mean=None, fbin_std=None, augment=False, limit_num = None):
         self.datalist=[os.path.join(datadir, x) for x in os.listdir(datadir)]
+        if(limit_num is not None):
+            self.datalist = self.datalist[:limit_num]
         self._stft=_stft
         self.sr=sr
         self.augment = augment
@@ -25,12 +27,12 @@ class MelDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         filename=self.datalist[index]
-        mel, energy = self.get_mel_from_file(filename)
+        mel, energy, waveform = self.get_mel_from_file(filename)
 
-        if(self.fbin_mean is not None):
-            mel = (mel - self.fbin_mean) / self.fbin_std
+        # if(self.fbin_mean is not None):
+        #     mel = (mel - self.fbin_mean) / self.fbin_std
             
-        return mel, filename
+        return waveform, filename
     
     def __len__(self):
         return len(self.datalist)
@@ -41,8 +43,13 @@ class MelDataset(torch.utils.data.Dataset):
         
         if(file_sr != self.sr):
             audio = torchaudio.functional.resample(audio, orig_freq=file_sr, new_freq=self.sr)
-        melspec, energy = self.get_mel_from_wav(audio[0,...])
-        return melspec, energy
+        
+        if(self._stft is not None):
+            melspec, energy = self.get_mel_from_wav(audio[0,...])
+        else:
+            melspec, energy = None, None
+            
+        return melspec, energy, audio
 
     def get_mel_from_wav(self, audio):
         audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
@@ -67,7 +74,7 @@ class MelDataset(torch.utils.data.Dataset):
 
 def load_npy_data(loader):
     new_train = []
-    for batch,filename in tqdm(loader):
+    for batch, waveform, filename in tqdm(loader):
         batch = batch.float().numpy()
         new_train.append(batch.reshape(-1,))
     new_train = np.array(new_train)

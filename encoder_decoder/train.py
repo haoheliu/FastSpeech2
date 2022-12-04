@@ -20,9 +20,14 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 import wandb
         
+def listdir_nohidden(path):
+    for f in os.listdir(path):
+        if not f.startswith('.'):
+            yield f
+            
 def get_restore_step(path):
     checkpoints = os.listdir(path)
-    steps = [int(x.split(".")[0]) for x in checkpoints]
+    steps = [int(x.split(".ckpt")[0].split("step=")[1]) for x in checkpoints]
     return max(steps)
 
 def main(args, configs):    
@@ -31,10 +36,6 @@ def main(args, configs):
     configuration = {**preprocess_config, **model_config, **train_config, **autoencoder_config} 
 
     preprocess_config, model_config, train_config, autoencoder_config = configs
-    ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
-    
-    if(os.path.exists(ckpt_path) and len(os.listdir(ckpt_path)) > 0):
-        args.restore_step = get_restore_step(ckpt_path)
         
     # Get dataset
     if(train_config["augmentation"]["balanced_sampling"]):
@@ -49,12 +50,12 @@ def main(args, configs):
         # if(n_gpus>1):
         #     sampler = DistributedSamplerWrapper(sampler, num_replicas=n_gpus, rank=rank, shuffle=True)
             
-        batch_size = train_config["optimizer"]["batch_size"]
+        batch_size = autoencoder_config["data"]["batchsize"]
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=16,
+            num_workers=12,
             pin_memory=True
         )
     else:
@@ -67,14 +68,15 @@ def main(args, configs):
         # else:
         #     sampler = None
             
-        batch_size = train_config["optimizer"]["batch_size"]
+        batch_size = autoencoder_config["data"]["batchsize"]
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=16,
+            num_workers=12,
             pin_memory=True
         )
+        
     print("The length of the dataset is %s, the length of the dataloader is %s, the batchsize is %s" % (len(dataset), len(loader),batch_size))
 
     # Get dataset
@@ -82,37 +84,54 @@ def main(args, configs):
         preprocess_config, train_config, train=False
     )
     
-    batch_size = train_config["optimizer"]["batch_size"]
+    batch_size = autoencoder_config["data"]["batchsize"]
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=True,
     )
 
-    model = AutoencoderKL(preprocess_config,
-                          autoencoder_config["model"]["params"]["ddconfig"],
+    model = AutoencoderKL(
+                        model_config, preprocess_config, autoencoder_config,
+                            autoencoder_config["model"]["params"]["ddconfig"],
                           autoencoder_config["model"]["params"]["lossconfig"],
                           embed_dim=autoencoder_config["model"]["params"]["embed_dim"],
                           learning_rate = autoencoder_config["model"]["base_learning_rate"],
                         )
-
-    wandb_logger = WandbLogger(version="v1", project="audioverse",config=configuration, name="Encoder_Decoder", save_dir="log") 
-    # wandb_logger = WandbLogger(version="test", project="audioverse",config=configuration, name="test", save_dir="log") 
+    
+    autoencoder_config["id"]["version"] = "%s_%s_%s_%s_%s" % (autoencoder_config["id"]["version"], 
+                                  autoencoder_config["id"]["name"], 
+                               autoencoder_config["model"]["params"]["embed_dim"],
+                               autoencoder_config["model"]["params"]["ddconfig"]["ch"],
+                               autoencoder_config["model"]["base_learning_rate"])
+    
+    wandb_logger = WandbLogger(version=autoencoder_config["id"]["version"], 
+                               project="audioverse",config=configuration, name=autoencoder_config["id"]["name"], save_dir="log") 
     
     checkpoint_callback = ModelCheckpoint(
-         monitor='train/total_loss',
-         filename='checkpoint-{step:02d}',
-        #  every_n_epochs=1,
-        every_n_train_steps=5000,
+        monitor='train/total_loss',
+        filename='checkpoint-{step:02d}',
+        every_n_train_steps=10000,
         save_top_k=5
     )
 
-    trainer = Trainer(resume_from_checkpoint="/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/encoder_decoder/log/audioverse/v1/checkpoints/checkpoint-step=140000.ckpt",
+    checkpoint_path = os.path.join(autoencoder_config["id"]["root"],"log",autoencoder_config["id"]["version"])
+    os.makedirs(checkpoint_path, exist_ok=True)
+    
+    if(len(os.listdir(checkpoint_path)) > 1):
+        resume_from_checkpoint=os.path.join(checkpoint_path, get_restore_step(checkpoint_path))
+        print("Resume from checkpoint", resume_from_checkpoint)
+    else:
+        print("Train from scratch")
+        resume_from_checkpoint = None
+    
+    trainer = Trainer(resume_from_checkpoint=resume_from_checkpoint,
                         accelerator="gpu", 
                       devices=torch.cuda.device_count(), 
                       logger=wandb_logger, 
                       callbacks=[checkpoint_callback],
-                      val_check_interval=20000,
+                    #   val_check_interval=5000,
+                    #   limit_train_batches=5,
                       limit_val_batches=500,
                       )
 
@@ -120,30 +139,23 @@ def main(args, configs):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--restore_step", type=int, default=0)
     parser.add_argument(
-        "-p",
-        "--preprocess_config",
-        type=str,
-        required=True,
-        help="path to preprocess.yaml",
-    )
-    parser.add_argument(
-        "-m", "--model_config", type=str, required=True, help="path to model.yaml"
-    )
-    parser.add_argument(
-        "-t", "--train_config", type=str, required=True, help="path to train.yaml"
+        "-c", "--autoencoder_config", type=str, required=True, help="path to autoencoder config folder"
     )    
-    
+
     args = parser.parse_args()
     
-    preprocess_config = yaml.load(
-        open(args.preprocess_config, "r"), Loader=yaml.FullLoader
-    )
-    model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
-    train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
+    config_root = args.autoencoder_config
     
-    autoencoder_config = yaml.load(open("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/encoder_decoder/config_model/kl-f8/config.yaml", "r"), Loader=yaml.FullLoader)
+    preprocess_config = os.path.join(config_root,"preprocess.yaml")
+    model_config = os.path.join(config_root,"model.yaml")
+    train_config = os.path.join(config_root,"train.yaml")
+    autoencoder_config = os.path.join(config_root, "config.yaml")
+    
+    preprocess_config = yaml.load(open(preprocess_config, "r"), Loader=yaml.FullLoader)
+    model_config = yaml.load(open(model_config, "r"), Loader=yaml.FullLoader)
+    train_config = yaml.load(open(train_config, "r"), Loader=yaml.FullLoader)
+    autoencoder_config = yaml.load(open(autoencoder_config, "r"), Loader=yaml.FullLoader)
     
     configs = (preprocess_config, model_config, train_config, autoencoder_config)
     

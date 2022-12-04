@@ -1,5 +1,5 @@
 import sys
-sys.path.append("..")
+sys.path.append("/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/")
 
 from evaluation.datasets.load_mel import MelDataset,load_npy_data
 from evaluation.metrics.ndb import *
@@ -14,71 +14,83 @@ from evaluation.metrics.fid import calculate_fid
 from evaluation.metrics.isc import calculate_isc
 from evaluation.metrics.kid import calculate_kid
 from evaluation.metrics.kl import calculate_kl
+from evaluation.panns.models import Cnn14
 
 import audio as Audio
 
 class EvaluationHelper():
-    def __init__(self, preprocess_config, model_config, train_config, device) -> None:
+    def __init__(self, preprocess_config, model_config, train_config, device, backbone="cnn14") -> None:
         
         self.preprocess_config=preprocess_config
         self.model_config=model_config
         self.train_config=train_config
         self.device = device
+        self.backbone = backbone
+        self.sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+        if(self.backbone == "cnn14"):
+            features_list = ['2048','logits']
+            if(self.sampling_rate == 16000):
+                self.mel_model = Cnn14(features_list=features_list, sample_rate=16000, window_size=512, hop_size=160, mel_bins=64, fmin=50, fmax=8000, classes_num=527)
+            elif(self.sampling_rate == 32000):
+                self.mel_model = Cnn14(features_list=features_list, sample_rate=32000, window_size=1024, hop_size=320, mel_bins=64, fmin=50, fmax=14000, classes_num=527)
+            else:
+                raise ValueError("We only support the evaluation on 16kHz and 32kHz sampling rate.")
+            self._stft = None
+        else:
+            print("Use Inception v3 model for evaluation")
+            self._stft = Audio.stft.TacotronSTFT(
+                preprocess_config["preprocessing"]["stft"]["filter_length"],
+                preprocess_config["preprocessing"]["stft"]["hop_length"],
+                preprocess_config["preprocessing"]["stft"]["win_length"],
+                preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
+                preprocess_config["preprocessing"]["audio"]["sampling_rate"],
+                preprocess_config["preprocessing"]["mel"]["mel_fmin"],
+                preprocess_config["preprocessing"]["mel"]["mel_fmax"],
+            )
+            self.mel_model=Melception(num_classes=309,features_list=['logits_unbiased','2048','logits'],feature_extractor_weights_path="/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/evaluation/logs/melception/melception.pt")
         
-        self._stft = Audio.stft.TacotronSTFT(
-            preprocess_config["preprocessing"]["stft"]["filter_length"],
-            preprocess_config["preprocessing"]["stft"]["hop_length"],
-            preprocess_config["preprocessing"]["stft"]["win_length"],
-            preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
-            preprocess_config["preprocessing"]["audio"]["sampling_rate"],
-            preprocess_config["preprocessing"]["mel"]["mel_fmin"],
-            preprocess_config["preprocessing"]["mel"]["mel_fmax"],
-        )
-        
-        self.mel_model=Melception(num_classes=309,features_list=['logits_unbiased','2048','logits'],feature_extractor_weights_path="/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/evaluation/logs/melception/melception.pt")
         self.mel_model.eval()
         self.mel_model.to(self.device)
-    
         self.fbin_mean, self.fbin_std = None, None
         
-    def calculate_stats_for_normalization(self, path, max_num=1000):
-        num_workers=0
-        dataset = DataLoader(MelDataset(path, 
-                                        self._stft, 
-                                        self.preprocess_config["preprocessing"]["audio"]["sampling_rate"],
-                                        self.fbin_mean,
-                                        self.fbin_std), 
-                             batch_size=1, 
-                             sampler=None, 
-                             num_workers=num_workers)
+    # def calculate_stats_for_normalization(self, path, max_num=1000):
+    #     num_workers=0
+    #     dataset = DataLoader(MelDataset(path, 
+    #                                     self._stft, 
+    #                                     self.preprocess_config["preprocessing"]["audio"]["sampling_rate"],
+    #                                     self.fbin_mean,
+    #                                     self.fbin_std), 
+    #                          batch_size=1, 
+    #                          sampler=None, 
+    #                          num_workers=num_workers)
         
-        mean,std = [],[]
+    #     mean,std = [],[]
         
-        for id, (batch,filename) in tqdm(enumerate(dataset)):
-            batch = batch.float().numpy() # [1, 64, 1001]
-            mean.append(np.mean(batch, axis=2))
-            std.append(np.std(batch, axis=2))
-            if(max_num is not None and id > max_num):
-                break
+    #     for id, (batch, waveform, filename) in tqdm(enumerate(dataset)):
+    #         batch = batch.float().numpy() # [1, 64, 1001]
+    #         mean.append(np.mean(batch, axis=2))
+    #         std.append(np.std(batch, axis=2))
+    #         if(max_num is not None and id > max_num):
+    #             break
         
-        mean = np.concatenate(mean, axis=0)
-        std = np.concatenate(std, axis=0)
+    #     mean = np.concatenate(mean, axis=0)
+    #     std = np.concatenate(std, axis=0)
         
-        self.fbin_mean = np.mean(mean, axis=0)
-        self.fbin_std = np.mean(std, axis=0)
+    #     self.fbin_mean = np.mean(mean, axis=0)
+    #     self.fbin_std = np.mean(std, axis=0)
             
-    def main(self, o_filepath,resultpath,same_name=False,number_of_bins=10,evaluation_num=10,cache_folder='./results/mnist_toy_example_ndb_cache',iter_num=40):
+    def main(self, o_filepath,resultpath,limit_num,same_name=False,number_of_bins=10,evaluation_num=10,cache_folder='./results/mnist_toy_example_ndb_cache',iter_num=40):
 
         # Use the ground truth audio file to calculate mean and std
-        self.calculate_stats_for_normalization(resultpath)
+        # self.calculate_stats_for_normalization(resultpath)
 
-        gsm = self.getgsmscore(o_filepath, resultpath, iter_num)
+        # gsm = self.getgsmscore(o_filepath, resultpath, iter_num)
 
-        ndb = self.getndbscore(o_filepath, resultpath, number_of_bins, evaluation_num, cache_folder)
+        # ndb = self.getndbscore(o_filepath, resultpath, number_of_bins, evaluation_num, cache_folder)
 
-        metrics=self.calculate_metrics(o_filepath,resultpath,same_name)
+        metrics=self.calculate_metrics(o_filepath,resultpath,same_name, limit_num)
         
-        return gsm, ndb, metrics
+        # return gsm, ndb, metrics
 
     def getndbscore(self, output, result,number_of_bins=30,evaluation_num=50,cache_folder='./results/mnist_toy_example_ndb_cache'):
         print("calculating the ndb score:")
@@ -132,12 +144,12 @@ class EvaluationHelper():
         plt.legend()
         plt.show()
 
-    def calculate_metrics(self, output, result, same_name):
+    def calculate_metrics(self, output, result, same_name, limit_num=None):
         torch.manual_seed(0)
         num_workers=0
         
-        outputloader = DataLoader(MelDataset(output, self._stft, self.preprocess_config["preprocessing"]["audio"]["sampling_rate"], self.fbin_mean, self.fbin_std, augment=True), batch_size=1, sampler=None, num_workers=num_workers)
-        resultloader = DataLoader(MelDataset(result, self._stft, self.preprocess_config["preprocessing"]["audio"]["sampling_rate"], self.fbin_mean, self.fbin_std), batch_size=1, sampler=None, num_workers=num_workers)
+        outputloader = DataLoader(MelDataset(output, self._stft, self.preprocess_config["preprocessing"]["audio"]["sampling_rate"], self.fbin_mean, self.fbin_std, augment=True, limit_num=limit_num), batch_size=1, sampler=None, num_workers=num_workers)
+        resultloader = DataLoader(MelDataset(result, self._stft, self.preprocess_config["preprocessing"]["audio"]["sampling_rate"], self.fbin_mean, self.fbin_std, limit_num=limit_num), batch_size=1, sampler=None, num_workers=num_workers)
 
         out = {}
 
@@ -150,7 +162,7 @@ class EvaluationHelper():
         metric_kl = calculate_kl(featuresdict_1, featuresdict_2, "logits",same_name)
         out.update(metric_kl)
         # if cfg.have_isc:
-        metric_isc = calculate_isc(featuresdict_1, feat_layer_name="logits_unbiased", splits=4, samples_shuffle= True, rng_seed=2020)
+        metric_isc = calculate_isc(featuresdict_1, feat_layer_name="logits", splits=4, samples_shuffle= True, rng_seed=2020)
         out.update(metric_isc)
         # if cfg.have_fid:
         metric_fid = calculate_fid(featuresdict_1, featuresdict_2, feat_layer_name="2048")
@@ -161,6 +173,7 @@ class EvaluationHelper():
 
         print('\n'.join((f'{k}: {v:.7f}' for k, v in out.items())))
         print("\n")
+        print(limit_num)
         print(
             f'KL: {out.get("kullback_leibler_divergence", float("nan")):8.5f};',
             f'ISc: {out.get("inception_score_mean", float("nan")):8.5f} ({out.get("inception_score_std", float("nan")):5f});',
@@ -176,18 +189,19 @@ class EvaluationHelper():
 
         # transforms=StandardNormalizeAudio()
 
-        for batch,filename in tqdm(dataloader):
+        for waveform, filename in tqdm(dataloader):
             metadict = {
                 'file_path_': filename,
             }
+            waveform = waveform.squeeze(1)
 
             # batch = transforms(batch) 
-            batch = batch.float().to(self.device)
+            waveform = waveform.float().to(self.device)
 
             with torch.no_grad():
-                features = self.mel_model(batch)
+                featuresdict = self.mel_model(waveform)
 
-            featuresdict = self.mel_model.convert_features_tuple_to_dict(features)
+            # featuresdict = self.mel_model.convert_features_tuple_to_dict(features)
             featuresdict = {k: [v.cpu()] for k, v in featuresdict.items()}
 
             if out is None:
@@ -237,9 +251,9 @@ if __name__ == '__main__':
     model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
     train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
     
-    o_filepath = "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/data/testdata/unpaired/60w/target"
+    o_filepath = "/mnt/fast/datasets/audio/audioset/2million_audioset_wav/balanced_train_segments"
     # resultpath = "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/data/testdata/unpaired/60w/target"
-    resultpath = "/mnt/fast/nobackup/users/hl01486/projects/general_audio_generation/conditional_transfer/FastSpeech2/data/testdata/unpaired/60w/synthesis"
+    resultpath = "/mnt/fast/datasets/audio/audioset/2million_audioset_wav/eval_segments"
     
     same_name = False
     
@@ -248,5 +262,7 @@ if __name__ == '__main__':
     
     evaluator = EvaluationHelper(preprocess_config, model_config, train_config, device)
     
-    evaluator.main(o_filepath,resultpath,same_name)
+    
+    for limitnum in [50,100, 500, 1000, 2000, 3000, 4000, 5000]:
+        evaluator.main(o_filepath,resultpath,limit_num=limitnum, same_name=same_name)
     # evaluator.calculate_stats_for_normalization()
