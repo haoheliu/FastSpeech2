@@ -1,1 +1,1 @@
-from ldm.modules.losses.contperceptual import LPIPSWithDiscriminator
+from encoder_decoder.ldm.modules.losses.contperceptual import LPIPSWithDiscriminator

@@ -152,10 +152,11 @@ class FlowSpecDecoder(nn.Module):
 class ClipLabel2Audio(nn.Module):
     """ Label2Audio: Generate audio with the blurred and truncated spectrogram (mu) """
 
-    def __init__(self, preprocess_config, model_config):
+    def __init__(self, preprocess_config, model_config, autoencoder_config):
         super(ClipLabel2Audio, self).__init__()
         self.model_config = model_config
         self.preprocess_config = preprocess_config
+        self.autoencoder_config = autoencoder_config
         
         self.target_length = self.preprocess_config["preprocessing"]["mel"]["target_length"]
         self.class_num = preprocess_config["class_num"]
@@ -164,9 +165,17 @@ class ClipLabel2Audio(nn.Module):
         
         self.speaker_emb = None
         
-        unet_in_channel = 2 #  if (self.cutoff_bins>=self.mel_bins) else 3
+        label_plus_condition_channel = 1
+        
+        if(autoencoder_config is not None):
+          # Use autoencoder
+          unet_in_channel = autoencoder_config["model"]["params"]["embed_dim"] + label_plus_condition_channel
+        else:
+          unet_in_channel = label_plus_condition_channel + 1
+          
         self.diff = DiffusionDecoder(unet_channels = model_config["unet_channel"],
-                                     unet_in_channels=unet_in_channel, 
+                                     unet_in_channels = unet_in_channel, 
+                                     unet_out_channels= unet_in_channel - label_plus_condition_channel, # If no autoencoder default is 1
                                      N=model_config["N_diff_steps"])
 
         self.label_proj_dropout = model_config["label_proj_dropout"]
@@ -178,8 +187,9 @@ class ClipLabel2Audio(nn.Module):
           nn.Linear(512, 256),
           nn.Dropout(self.label_proj_dropout),
           nn.LeakyReLU(inplace=True),
-          nn.Linear(256, self.mel_bins)
+          nn.Linear(256, 16)
         )
+        
         
     def build_frame_energy_mask(self, logmels):
         energy = torch.sum(torch.exp(logmels), dim=-1) # [4, 496]
@@ -212,6 +222,7 @@ class ClipLabel2Audio(nn.Module):
         gen=False,
     ):  
         seg_label_emb = self.label_proj(seg_label)
+        seg_label_emb = seg_label_emb.unsqueeze(1)
         
         if(not gen):
             diff_output = None
@@ -251,19 +262,28 @@ class DiffusionDecoder(nn.Module):
 
   def marginal_prob(self, mu, x, t):
     log_mean_coeff = -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-    mean = torch.exp(log_mean_coeff[:, None, None]) * x
+    
+    if(len(x.size()) == 3):
+      mean = torch.exp(log_mean_coeff[:, None, None]) * x
+    elif(len(x.size()) == 4):
+      mean = torch.exp(log_mean_coeff[:, None, None, None]) * x
+      
     std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
     return mean, std
 
   def cal_loss(self, x, mu, t, z, std, g=None):
     time_steps = t * (self.N - 1)
     if g is not None:
-        x = torch.stack([x, g], 1)
+        x = torch.cat([x, g], 1)
     else:
-        x = torch.stack([x], 1)
-    
+        x = torch.cat([x], 1)
     grad = self.unet(x, time_steps)
-    loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
+    
+    if(len(z.size()) == 4):
+      loss = torch.square(grad + z / std[:, None, None, None]) * torch.square(std[:, None, None, None])
+    elif(len(z.size()) == 3):
+      loss = torch.square(grad + z / std[:, None, None]) * torch.square(std[:, None, None])
+      
     return loss
 
   def forward(self, mu, y=None, g=None, gen=False):
@@ -271,7 +291,12 @@ class DiffusionDecoder(nn.Module):
       t = torch.FloatTensor(y.shape[0]).uniform_(0, self.T-self.delta_t).to(y.device)+self.delta_t  # sample a random t
       mean, std = self.marginal_prob(None, y, t)
       z = torch.randn_like(y)
-      x = mean + std[:, None, None] * z
+      
+      if(len(z.size()) == 4):
+        x = mean + std[:, None, None, None] * z
+      elif(len(z.size()) == 3):
+        x = mean + std[:, None, None] * z
+        
       loss = self.cal_loss(x, None, t, z, std, g)
       return loss
     else:
@@ -284,9 +309,9 @@ class DiffusionDecoder(nn.Module):
           t = torch.FloatTensor(1).fill_(n).to(y.device)
           
           if g is not None:
-              x = torch.stack([y_t_plus_one, g], 1)
+              x = torch.cat([y_t_plus_one, g], 1)
           else:
-              x = torch.stack([y_t_plus_one], 1)
+              x = torch.cat([y_t_plus_one], 1)
           
           grad = self.unet(x, t)
           

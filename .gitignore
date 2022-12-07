@@ -19,6 +19,7 @@ dist/
 downloads/
 eggs/
 *.pt
+core.*
 .eggs/
 *.tmp
 *.pkl

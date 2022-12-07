@@ -252,9 +252,12 @@ class Unet(nn.Module):
             x = resnet(x, t)
             x = resnet2(x, t)
             x = attn(x)
+            
             x = upsample(x)
-
-        return torch.squeeze(self.final_conv(x),1)[:, :, :length]
+        if(len(x.size()) == 4): # Output multiple channels
+            return self.final_conv(x)[:, :, :, :length]
+        elif(len(x.size()) == 3):
+            return torch.squeeze(self.final_conv(x),1)[:, :, :length]
 
 # gaussian diffusion trainer class
 
@@ -438,10 +441,10 @@ class GaussianDiffusion(nn.Module):
 
 
 if __name__ == '__main__':
-    wg=Unet(64,dim_mults=(1, 2,4),out_dim=1)
+    wg=Unet(64,dim_mults=(1, 2,4),out_dim=8,channels=9)
 
-    u=np.zeros([16,80,431],dtype=np.float32)
-    x0=np.zeros([16,80,431],dtype=np.float32)
+    u=np.zeros([16,64,16],dtype=np.float32)
+    x0=np.zeros([16,64,16],dtype=np.float32)
 
     u = torch.from_numpy(u)
     x0 = torch.from_numpy(x0)

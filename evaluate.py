@@ -15,8 +15,8 @@ from dataset import Dataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True, num2label={}):
-    preprocess_config, model_config, train_config = configs
+def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True, num2label={}, autoencoder=None):
+    preprocess_config, model_config, train_config, autoencoder_config = configs
 
     fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
     fbank_std = preprocess_config["preprocessing"]["mel"]["std"]
@@ -42,16 +42,28 @@ def evaluate(model, step, configs, logger=None, vocoder=None, pred_prosody=True,
     # Evaluation
     for batchs in loader:
         fbank, labels, fnames, waveform, seg_label = batchs 
+                
         fbank = fbank.to(device)
         labels = labels.to(device)
         seg_label = seg_label.to(device)
         fbank = normalize(fbank)
         
+        if(autoencoder is not None):
+            posterior = autoencoder.encode(fbank.unsqueeze(1))
+            fbank = posterior.sample()
+        
         with torch.no_grad():
             # Forward
             diff_loss, generated = model(fbank, seg_label, gen=True)
             # generated = denormalize(generated)
-        break
+    
+        if(autoencoder is not None):
+            generated = autoencoder.decode(generated)
+            generated = generated.squeeze(1)
+            fbank = autoencoder.decode(fbank)
+            fbank = fbank.squeeze(1)
+        
+        break                                                   
     
     if logger is not None:
         for i in range(fbank.size(0)):

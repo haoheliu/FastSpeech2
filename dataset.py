@@ -291,7 +291,7 @@ class Dataset(Dataset):
         if(len(seg_label.shape) <= 1):
             seg_label = seg_label[None,...]
         
-        seg_label = np.repeat(seg_label, 1056, 0)
+        seg_label = np.repeat(seg_label, 64, 0) # TODO
         seg_label = seg_label[:self.target_length,:]
         return seg_label
 

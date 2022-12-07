@@ -42,7 +42,7 @@ preprocessing:
     blur: False
     mean: -4.63
     std: 2.74
-    target_length: 1056
+    target_length: 1024
   pitch:
     feature: "frame_level" # support 'phoneme_level' or 'frame_level'
     normalization: True

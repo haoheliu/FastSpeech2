@@ -1,3 +1,5 @@
+log_directory: "/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/stablediffusion/autoencoderkl16k"
+
 id: 
   version: "v1.0.1"
   name: "kl-f4-ch128-ts4"
@@ -5,13 +7,13 @@ id:
 
 model:
   base_learning_rate: 4.5e-05
-  target: ldm.models.autoencoder.AutoencoderKL
+  target: encoder_decoder.ldm.models.autoencoder.AutoencoderKL
   params:
     monitor: val/rec_loss
-    embed_dim: 3
+    embed_dim: 8
     time_shuffle: 4
     lossconfig:
-      target: ldm.modules.losses.LPIPSWithDiscriminator
+      target: encoder_decoder.ldm.modules.losses.LPIPSWithDiscriminator
       params:
         disc_start: 50001
         kl_weight: 1.0e-06
@@ -38,12 +40,12 @@ data:
     batch_size: 10
     wrap: true
     train:
-      target: ldm.data.openimages.FullOpenImagesTrain
+      target: encoder_decoder.ldm.data.openimages.FullOpenImagesTrain
       params:
         size: 384
         crop_size: 256
     validation:
-      target: ldm.data.openimages.FullOpenImagesValidation
+      target: encoder_decoder.ldm.data.openimages.FullOpenImagesValidation
       params:
         size: 384
         crop_size: 256

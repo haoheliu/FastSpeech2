@@ -3,14 +3,14 @@ import pytorch_lightning as pl
 import torch.nn.functional as F
 from contextlib import contextmanager
 import numpy as np
-from ldm.modules.ema import *
+from encoder_decoder.ldm.modules.ema import *
 
 from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 from torch.optim.lr_scheduler import LambdaLR
-from ldm.modules.diffusionmodules.model import Encoder, Decoder
-from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
+from encoder_decoder.ldm.modules.diffusionmodules.model import Encoder, Decoder
+from encoder_decoder.ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 import wandb
-from ldm.util import instantiate_from_config
+from encoder_decoder.ldm.util import instantiate_from_config
 
 from _utils.model import get_model, get_vocoder, get_param_num, get_discriminator
 from _utils.tools import to_device, log, synth_one_sample
@@ -288,21 +288,31 @@ class AutoencoderKL(pl.LightningModule):
                  model_config,
                  preprocess_config,
                  autoencoder_config,
-                 ddconfig,
-                 lossconfig,
-                 embed_dim,
+                 ddconfig=None,
+                 lossconfig=None,
+                 embed_dim=None,
                  ckpt_path=None,
                  ignore_keys=[],
                  image_key="image",
                  colorize_nlabels=None,
                  monitor=None,
-                 learning_rate=1e-5
+                 learning_rate=1e-5,
+                 for_inference_only=False
                  ):
         super().__init__()
+        
         self.image_key = image_key
+        
+        ddconfig = autoencoder_config["model"]["params"]["ddconfig"]
+        lossconfig = autoencoder_config["model"]["params"]["lossconfig"]
+        embed_dim=autoencoder_config["model"]["params"]["embed_dim"]
+        learning_rate = autoencoder_config["model"]["base_learning_rate"]
+        
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder(**ddconfig)
+
         self.loss = instantiate_from_config(lossconfig)
+            
         assert ddconfig["double_z"]
         self.autoencoder_config = autoencoder_config
         self.model_config = model_config
@@ -327,7 +337,8 @@ class AutoencoderKL(pl.LightningModule):
         
         self.feature_cache = None
         self.flag_first_run = True
-
+        self.train_step = 0
+        
     def init_from_ckpt(self, path, ignore_keys=list()):
         sd = torch.load(path, map_location="cpu")["state_dict"]
         keys = list(sd.keys())
@@ -340,6 +351,7 @@ class AutoencoderKL(pl.LightningModule):
         print(f"Restored from {path}")
 
     def encode(self, x):
+        x = self.time_shuffle_operation(x)
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -348,12 +360,12 @@ class AutoencoderKL(pl.LightningModule):
     def decode(self, z):
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
+        bs, ch, shuffled_timesteps, fbins = dec.size()
+        dec = self.time_unshuffle_operation(dec, bs, int(ch*shuffled_timesteps), fbins)
         return dec
 
     def forward(self, input, sample_posterior=True):
-        inputx = self.time_shuffle_operation(input)
-        
-        posterior = self.encode(inputx)
+        posterior = self.encode(input)
         
         if sample_posterior:
             z = posterior.sample()
@@ -365,8 +377,6 @@ class AutoencoderKL(pl.LightningModule):
             self.flag_first_run=False
             
         dec = self.decode(z)
-        bs, ch, shuffled_timesteps, fbins = dec.size()
-        dec = self.time_unshuffle_operation(dec, bs, int(ch*shuffled_timesteps), fbins)
         
         return dec, posterior
 
@@ -411,8 +421,10 @@ class AutoencoderKL(pl.LightningModule):
         # print(np.mean(self.feature_cache), np.std(self.feature_cache))
         
         reconstructions, posterior = self(inputs)
-            
+
         if optimizer_idx == 0:
+            self.train_step += 1
+            self.log("train_step", self.train_step, prog_bar=False, logger=False, on_step=True, on_epoch=False)
             # train encoder+decoder+logvar
             aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, optimizer_idx, self.global_step,
                                             last_layer=self.get_last_layer(), split="train")
@@ -430,9 +442,9 @@ class AutoencoderKL(pl.LightningModule):
             return discloss
 
     def validation_step(self, batch, batch_idx):
-        inputs = self.get_input(batch, self.image_key)
         
-        if(batch_idx <= 1 and self.local_rank==0):
+        inputs = self.get_input(batch, self.image_key)
+        if(batch_idx <= 1):
             print("Log val image")
             log = self.log_images(inputs, train=False)
 
@@ -487,6 +499,7 @@ class AutoencoderKL(pl.LightningModule):
         images_input = self.tensor2numpy(log["inputs"][0,0]).T
         images_reconstruct = self.tensor2numpy(log["reconstructions"][0,0]).T 
         images_samples = self.tensor2numpy(log["samples"][0,0]).T
+        
         if(train): name =  "train"
         else: name="val"
         
@@ -497,7 +510,6 @@ class AutoencoderKL(pl.LightningModule):
         _, wav_reconstruction, wav_prediction = synth_one_sample(inputs[0,0], reconstructions[0,0], labels="validation",vocoder=self.vocoder, model_config=self.model_config, preprocess_config=self.preprocess_config)
         _, wav_reconstruction, wav_samples = synth_one_sample(inputs[0,0], samples[0,0], labels="validation",vocoder=self.vocoder, model_config=self.model_config, preprocess_config=self.preprocess_config)
         
-
         self.logger.experiment.log({"original_%s" % name: wandb.Audio(wav_reconstruction, caption="original", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"]),
                                     "reconstruct_%s" % name: wandb.Audio(wav_prediction, caption="reconstruct", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"]),
                                     "samples_%s" % name: wandb.Audio(wav_samples, caption="samples", sample_rate=self.preprocess_config["preprocessing"]["audio"]["sampling_rate"])})

@@ -15,11 +15,11 @@ from torch.utils.data import DataLoader, Dataset
 # from _utils.sampler import DistributedSamplerWrapper
 # from torch.utils.data.distributed import DistributedSampler
 from pytorch_lightning import Trainer, seed_everything
-from ldm.models.autoencoder import AutoencoderKL
-from pytorch_lightning.loggers import WandbLogger
+from encoder_decoder.ldm.models.autoencoder import AutoencoderKL
+from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 import wandb
-        
+
 def listdir_nohidden(path):
     for f in os.listdir(path):
         if not f.startswith('.'):
@@ -28,15 +28,15 @@ def listdir_nohidden(path):
 def get_restore_step(path):
     checkpoints = os.listdir(path)
     steps = [int(x.split(".ckpt")[0].split("step=")[1]) for x in checkpoints]
-    return max(steps)
+    return checkpoints[np.argmax(steps)]
 
 def main(args, configs):    
-
     preprocess_config, model_config, train_config, autoencoder_config = configs
     configuration = {**preprocess_config, **model_config, **train_config, **autoencoder_config} 
-
+    
     preprocess_config, model_config, train_config, autoencoder_config = configs
-        
+    log_path = autoencoder_config["log_directory"]    
+    
     # Get dataset
     if(train_config["augmentation"]["balanced_sampling"]):
         print('balanced sampler is being used')
@@ -55,7 +55,7 @@ def main(args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=12,
+            num_workers=8,
             pin_memory=True
         )
     else:
@@ -73,7 +73,7 @@ def main(args, configs):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            num_workers=12,
+            num_workers=8,
             pin_memory=True
         )
         
@@ -91,31 +91,26 @@ def main(args, configs):
         shuffle=True,
     )
 
-    model = AutoencoderKL(
-                        model_config, preprocess_config, autoencoder_config,
-                            autoencoder_config["model"]["params"]["ddconfig"],
-                          autoencoder_config["model"]["params"]["lossconfig"],
-                          embed_dim=autoencoder_config["model"]["params"]["embed_dim"],
-                          learning_rate = autoencoder_config["model"]["base_learning_rate"],
-                        )
+    # No normalization here
+    model = AutoencoderKL(model_config, preprocess_config, autoencoder_config)
     
-    autoencoder_config["id"]["version"] = "%s_%s_%s_%s_%s" % (autoencoder_config["id"]["version"], 
-                                  autoencoder_config["id"]["name"], 
+    autoencoder_config["id"]["version"] = "%s_%s_%s_%s_%s" % (autoencoder_config["id"]["name"], 
                                autoencoder_config["model"]["params"]["embed_dim"],
                                autoencoder_config["model"]["params"]["ddconfig"]["ch"],
-                               autoencoder_config["model"]["base_learning_rate"])
+                               autoencoder_config["model"]["base_learning_rate"], 
+                               autoencoder_config["id"]["version"])
     
-    wandb_logger = WandbLogger(version=autoencoder_config["id"]["version"], 
-                               project="audioverse",config=configuration, name=autoencoder_config["id"]["name"], save_dir="log") 
-    
+    wandb_logger = WandbLogger(save_dir = log_path,
+                               version=autoencoder_config["id"]["version"], project="audioverse",config=configuration, name=autoencoder_config["id"]["name"]) 
+
     checkpoint_callback = ModelCheckpoint(
         monitor='train/total_loss',
-        filename='checkpoint-{step:02d}',
-        every_n_train_steps=10000,
+        filename='checkpoint-{train_step:.0f}',
+        every_n_train_steps=5000*2, # When you have two optimizer, one traditional step equals to two train steps.
         save_top_k=5
     )
 
-    checkpoint_path = os.path.join(autoencoder_config["id"]["root"],"log",autoencoder_config["id"]["version"])
+    checkpoint_path = os.path.join(log_path, "audioverse", autoencoder_config["id"]["version"],"checkpoints")
     os.makedirs(checkpoint_path, exist_ok=True)
     
     if(len(os.listdir(checkpoint_path)) > 1):
@@ -143,6 +138,10 @@ if __name__ == "__main__":
         "-c", "--autoencoder_config", type=str, required=True, help="path to autoencoder config folder"
     )    
 
+    # parser.add_argument(
+    #     "-l", "--log_directory", type=str, required=False, help="", default="/mnt/fast/nobackup/scratch4weeks/hl01486/exps/audio_generation/stablediffusion/autoencoderkl16k",
+    # )
+    
     args = parser.parse_args()
     
     config_root = args.autoencoder_config

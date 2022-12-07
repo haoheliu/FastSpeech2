@@ -9,9 +9,9 @@ from model import FastSpeech2, ScheduledOptim, Label2Audio, ClipLabel2Audio
 from discriminator import SpecDiscriminator
 
 def get_model(args, model_name, configs, device, train=False):
-    (preprocess_config, model_config, train_config) = configs
+    (preprocess_config, model_config, train_config, autoencoder_config) = configs
 
-    model = eval(model_name)(preprocess_config, model_config).to(device)
+    model = eval(model_name)(preprocess_config, model_config, autoencoder_config).to(device)
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],

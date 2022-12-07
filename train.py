@@ -26,6 +26,7 @@ from _utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
 from evaluate import evaluate
+from encoder_decoder.ldm.models.autoencoder import AutoencoderKL
 import math
 
 def build_id_to_label(
@@ -69,6 +70,11 @@ def get_restore_step(path):
     steps = [int(x.split(".")[0]) for x in checkpoints]
     return max(steps)
 
+def get_restore_step_autoencoder(path):
+    checkpoints = os.listdir(path)
+    steps = [int(x.split(".ckpt")[0].split("step=")[1]) for x in checkpoints]
+    return checkpoints[np.argmax(steps)]
+
 def main(rank, n_gpus, args, configs):
     global FBANK
     
@@ -94,7 +100,7 @@ def main(rank, n_gpus, args, configs):
     print("I am process %s, running on %s: starting (%s)" % (
             os.getpid(), os.uname()[1], time.asctime()))
     
-    preprocess_config, model_config, train_config = configs
+    preprocess_config, model_config, train_config, autoencoder_config = configs
     ckpt_path = os.path.join(train_config["path"]["ckpt_path"])
     fbank_mean = preprocess_config["preprocessing"]["mel"]["mean"]
     fbank_std = preprocess_config["preprocessing"]["mel"]["std"]
@@ -152,10 +158,34 @@ def main(rank, n_gpus, args, configs):
         )
     print("The length of the dataset is %s, the length of the dataloader is %s, the batchsize is %s" % (len(dataset), len(loader),batch_size))
 
+    if(autoencoder_config is not None):
+        autoencoder_config["id"]["version"] = "%s_%s_%s_%s_%s" % (autoencoder_config["id"]["name"], 
+                               autoencoder_config["model"]["params"]["embed_dim"],
+                               autoencoder_config["model"]["params"]["ddconfig"]["ch"],
+                               autoencoder_config["model"]["base_learning_rate"], 
+                               autoencoder_config["id"]["version"])
+        checkpoint_path = os.path.join(autoencoder_config["log_directory"], "audioverse", autoencoder_config["id"]["version"],"checkpoints")
+        # if(len(os.listdir(checkpoint_path)) < 1):
+            # raise RuntimeError("No checkpoint found in %s" % checkpoint_path)
+        if(len(os.listdir(checkpoint_path)) > 1):
+            resume_from_checkpoint=os.path.join(checkpoint_path, get_restore_step_autoencoder(checkpoint_path))
+            print("Resume from checkpoint", resume_from_checkpoint)
+        else:
+            print("Train from scratch")
+            resume_from_checkpoint = None
+        autoencoder = AutoencoderKL.load_from_checkpoint(resume_from_checkpoint, 
+                                                         model_config=model_config, 
+                                                         preprocess_config = preprocess_config, 
+                                                         autoencoder_config = autoencoder_config)
+        for p in autoencoder.parameters():
+            p.requires_grad = False
+    else:
+        autoencoder = None
+    
     # disc, opt_d = get_discriminator(args, configs, device, train=True)
     # Prepare model
     model, optimizer = get_model(args, model_config["model_name"], configs, device, train=True)
-    print(model)
+    autoencoder = autoencoder.cuda(rank)
     model = model.cuda(rank)
     print("===> Woking directory:", os.getcwd())
     if(n_gpus > 1):
@@ -171,6 +201,7 @@ def main(rank, n_gpus, args, configs):
     # Init logger
     for p in train_config["path"].values():
         os.makedirs(p, exist_ok=True)
+        
     train_log_path = os.path.join(train_config["path"]["log_path"], "train")
     val_log_path = os.path.join(train_config["path"]["log_path"], "val")
     os.makedirs(train_log_path, exist_ok=True)
@@ -220,6 +251,11 @@ def main(rank, n_gpus, args, configs):
             #     FBANK = torch.cat([FBANK, fbank.flatten()])
             # print(torch.mean(FBANK), torch.std(FBANK))
             
+            if(autoencoder is not None):
+                posterior = autoencoder.encode(fbank.unsqueeze(1))
+                fbank = posterior.sample()
+                
+            # If you use autoencoder, you need to set the mean and std in the configuration file to 0 and 1
             fbank = normalize(fbank)
             # Forward
             diff_loss, _ = model(fbank, seg_label, gen=False)
@@ -249,6 +285,12 @@ def main(rank, n_gpus, args, configs):
                         model.eval()
                         diff_loss, generated = model(fbank, seg_label, gen=True)
                     model.train()
+                    if(autoencoder is not None):
+                        generated = autoencoder.decode(generated)
+                        generated = generated.squeeze(1)
+                        fbank = autoencoder.decode(fbank)
+                        fbank = fbank.squeeze(1)
+                        
                     for i in range(fbank.size(0)):
                         label = [int(x) for x in torch.where(labels[i] == 1)[0]]
                         label = [num2label[x] for x in label]
@@ -290,7 +332,7 @@ def main(rank, n_gpus, args, configs):
 
                 if step % val_step == 0:
                     model.eval()
-                    evaluate(model, step, configs, val_logger, vocoder,num2label=num2label)
+                    evaluate(model, step, configs, val_logger, vocoder,num2label=num2label, autoencoder=autoencoder)
                     model.train()
 
                 if step % save_step == 0:
@@ -348,10 +390,15 @@ if __name__ == "__main__":
     )
     model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
     train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
-      
+    
+    if("autoencoder_config_path" in train_config["autoencoder"].keys()):
+        autoencoder_config = yaml.load(open(train_config["autoencoder"]["autoencoder_config_path"], "r"), Loader=yaml.FullLoader)
+    else:
+        autoencoder_config = None
+    
     train_config = rescale_batchsize(train_config)  
     
-    configs = (preprocess_config, model_config, train_config)
+    configs = (preprocess_config, model_config, train_config, autoencoder_config)
 
     n_gpus = torch.cuda.device_count()
     
